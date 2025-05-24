@@ -6,7 +6,7 @@ from studymathai.db import DatabaseManager
 from studymathai.utils import TextCleaner
 from studymathai.processor import BookProcessor, PageTextExtractor, BookContentExtractor, PageAwareChapterSegmentor
 from studymathai.generator import SlideGenerator
-
+from studymathai.chatbot import ChatBot
 
 def parse_args():
     parser = argparse.ArgumentParser(description="StudyMathAI pipeline runner")
@@ -59,6 +59,20 @@ def main():
     slidegen.process_book(processor.book.id)
 
     print("✅ All processing complete.")
+
+
+
+def bot():
+    bot = ChatBot()
+    print("🤖 ChatBot ready with retrieval. Type 'exit' to quit.")
+
+    while True:
+        user_input = input("You: ")
+        if user_input.lower().strip() in {"exit", "quit"}:
+            break
+
+        reply = bot.get_response(user_input)
+        print(f"Bot: {reply}")
 
 
 if __name__ == '__main__':
