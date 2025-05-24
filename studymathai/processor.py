@@ -8,6 +8,10 @@ from sentence_transformers import SentenceTransformer, util
 from .db import DatabaseManager
 from .models import PageText, BookContent, ChapterContent
 from .utils import TextCleaner
+from studymathai.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class BookProcessor:
     """
@@ -56,7 +60,7 @@ class PageTextExtractor:
                 )
             except IntegrityError:
                 continue
-        print(f"✅ Stored {self.doc.page_count} pages for book ID {self.book.id}")
+        logger.info(f"✅ Stored {self.doc.page_count} pages for book ID {self.book.id}")
 
 
 class BookContentExtractor:
@@ -135,7 +139,7 @@ class BookContentExtractor:
             chapter_ranges_with_objs.append((title, start, end, chapter))
 
         self._save_toc_to_db(chapter_ranges_with_objs)
-        print(f"✅ Extracted chapters and TOC for book ID {self.book.id}")
+        logger.info(f"✅ Extracted chapters and TOC for book ID {self.book.id}")
 
 
 
@@ -176,7 +180,7 @@ class PageAwareChapterSegmentor:
 
     def segment_and_store(self):
         if not self.headings:
-            print(f"No TOC entries found for chapter {self.chapter.id}")
+            logger.info(f"No TOC entries found for chapter {self.chapter.id}")
             return
 
         all_lines = []
@@ -224,4 +228,4 @@ class PageAwareChapterSegmentor:
                 parent_id=heading.parent_id
             )
 
-        print(f"✅ Segmented chapter {self.chapter.chapter_title} (ID: {self.chapter.id})")
+        logger.info(f"✅ Segmented chapter {self.chapter.chapter_title} (ID: {self.chapter.id})")

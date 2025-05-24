@@ -125,8 +125,8 @@ class SlideGenerator:
                 slide_deck = self.generate_slides(segment.content_text, segment.heading_title)
                 self.db.add_generated_slide(
                     content_id=segment.id,
-                    book_id=segment.book_id,  # ← use from ChapterContent
-                    slide_data=slide_deck.dict(),
+                    book_id=segment.book_id, 
+                    slide_data=slide_deck.model_dump(),
                     model_info=self.model
                 )
         print("✅ Slide generation complete.")

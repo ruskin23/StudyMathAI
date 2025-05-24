@@ -17,6 +17,7 @@ poetry.lock
 *.csv
 outputs/
 notebooks/
+uploads/
 
 # ChromaDB and SQLite
 *.db
@@ -32,3 +33,7 @@ chroma_index/
 # test scripts
 dev_scripts/
 
+# logs
+logs/
+
+# Folder
