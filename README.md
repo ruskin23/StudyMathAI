@@ -1,5 +1,8 @@
 # 📚 StudyMathAI
 
+<img src="StudyMath.ai.png" alt="My project logo" width="200">
+
+
 > Transform dense math textbooks into interactive, searchable slide decks powered by AI
 
 StudyMathAI is an intelligent educational tool that converts PDF textbooks into structured, study-ready presentations with semantic search capabilities. Built with OpenAI's GPT models and vector databases, it makes complex mathematical content more accessible and engaging for students.
