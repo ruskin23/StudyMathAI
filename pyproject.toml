@@ -1,0 +1,32 @@
+[project]
+name = "studymathai"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Ruskin Patel",email = "ruskin.patel23@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai (>=1.82.0,<2.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "studymathai", from = "src"}]
+
+
+[tool.poetry.group.dev.dependencies]
+jupyter = "^1.1.1"
+ipykernel = "^6.29.5"
+pypdf2 = "^3.0.1"
+pymupdf = "^1.26.0"
+tiktoken = "^0.9.0"
+sentence-transformers = "^4.1.0"
+numpy = "^2.2.6"
+sqlalchemy = "^2.0.41"
+python-dotenv = "^1.1.0"
+chromadb = "^1.0.10"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

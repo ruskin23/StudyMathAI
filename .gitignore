@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Poetry / virtualenv
+.env
+.venv
+poetry.lock
+
+# Jupyter + data
+*.ipynb
+*.json
+*.txt
+*.csv
+outputs/
+notebooks/
+
+# ChromaDB and SQLite
+*.db
+chroma_index/
+
+# VS Code / IDE
+.vscode/
+.idea/
+
+# Misc
+.DS_Store
+
+# test scripts
+dev_scripts/
+
