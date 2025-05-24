@@ -6,6 +6,7 @@ authors = [
     {name = "Ruskin Patel",email = "ruskin.patel23@gmail.com"}
 ]
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.12"
 dependencies = [
     "openai (>=1.82.0,<2.0.0)",
