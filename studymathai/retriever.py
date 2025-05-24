@@ -15,13 +15,11 @@ class SlideRetriever:
         self.collection = self.client.get_collection(name="slides")
 
     def query(self, question: str, top_k: int = 3):
-        # Embed the query
         query_embedding = self.embedding_model.encode(question)
 
-        # Search in ChromaDB
         results = self.collection.query(
             query_embeddings=[query_embedding],
-            n_results=top_k,
+            n_results=top_k * 3,  # Fetch more to allow filtering by content_id
             include=["metadatas", "distances"]
         )
 
@@ -29,12 +27,25 @@ class SlideRetriever:
             print("❌ No matches found.")
             return []
 
+        seen_content_ids = set()
         hits = []
+
         for meta, dist in zip(results["metadatas"][0], results["distances"][0]):
             content_id = meta["content_id"]
+            if content_id in seen_content_ids:
+                continue
+            seen_content_ids.add(content_id)
+
             heading_title = meta.get("heading_title", "")
-            score = 1 - dist  # Higher is better
-            hits.append((content_id, heading_title, score))
+            score = 1 - dist
+            hits.append({
+                "content_id": content_id,
+                "heading_title": heading_title,
+                "score": score
+            })
+
+            if len(hits) >= top_k:
+                break
 
         return hits
 

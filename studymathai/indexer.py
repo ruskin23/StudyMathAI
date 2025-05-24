@@ -7,12 +7,20 @@ from studymathai.db import DatabaseManager
 from studymathai.models import GeneratedSlide, ChapterContent
 
 
-class SlideVectorIndexer:
-    def __init__(self, db: DatabaseManager, persist_dir: str = "./chroma_index"):
-        self.db = db
-        self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+import os
+from dotenv import load_dotenv
 
-        self.client = chromadb.PersistentClient(path=persist_dir)
+load_dotenv()
+
+class SlideVectorIndexer:
+    def __init__(self, db: DatabaseManager):
+        self.db = db
+
+        chroma_dir = os.getenv("CHROMA_DIRECTORY", "./chroma_index")
+        embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+
+        self.embedding_model = SentenceTransformer(embedding_model)
+        self.client = chromadb.PersistentClient(path=chroma_dir)
         self.collection = self.client.get_or_create_collection(name="slides")
 
     def flatten_slide(self, slide):

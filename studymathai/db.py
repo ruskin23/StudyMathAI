@@ -1,3 +1,4 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import IntegrityError
@@ -7,18 +8,11 @@ from typing import List, Optional
 
 
 class DatabaseManager:
-    """
-    Handles all database operations for StudyMathAI.
-    """
-
-    def __init__(self, db_url="sqlite:///studymathai.db"):
-        """
-        Initialize connection to the database.
-        :param db_url: Database URL, defaults to a local SQLite file.
-        """
-        self.engine = create_engine(db_url)
+    def __init__(self):
+        db_name = os.getenv("SQLITE_DB_NAME", "studymathai.db")
+        self.engine = create_engine(f"sqlite:///{db_name}")
         Base.metadata.create_all(self.engine)
-        self.Session = scoped_session(sessionmaker(bind=self.engine, expire_on_commit=False))
+        self.Session = sessionmaker(bind=self.engine)
 
     def add_book(self, book_hash: str, file_path: str, title: str) -> Book:
         """
