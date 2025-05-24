@@ -6,6 +6,7 @@ StudyMathAI is an intelligent educational tool that converts PDF textbooks into 
 
 ## ✨ Features
 
+- **🤖 Interactive Chatbot**: Natural language conversation interface with automatic knowledge base integration
 - **🔍 Intelligent PDF Processing**: Automatically extracts and structures content using Table of Contents
 - **📖 Chapter Segmentation**: Breaks down chapters into digestible sections based on headings
 - **🤖 AI-Powered Slide Generation**: Creates clean, markdown-formatted slides with proper mathematical notation
@@ -85,7 +86,28 @@ python -m studymathai.indexer
 
 Creates vector embeddings and populates the ChromaDB collection for semantic search.
 
-#### 3. Search Content
+#### 3. Interactive Chat Interface
+
+Use the AI-powered chatbot to ask questions about your textbook content:
+
+```python
+from studymathai.chatbot import ChatBot
+
+# Initialize the chatbot
+bot = ChatBot()
+
+# Ask questions naturally
+response = bot.get_response("What are vector spaces and how do they work?")
+print(response)
+
+# The chatbot automatically searches your knowledge base
+response = bot.get_response("Explain linear independence with examples")
+print(response)
+```
+
+#### 4. Direct Search (Advanced)
+
+For programmatic access to the search functionality:
 
 ```python
 from studymathai.db import DatabaseManager
@@ -107,6 +129,7 @@ for result in results:
 ```
 studymathai/
 ├── __init__.py
+├── chatbot.py        # Interactive AI tutoring chatbot
 ├── db.py              # Database operations and models
 ├── generator.py       # AI slide generation with OpenAI
 ├── indexer.py         # Vector indexing with ChromaDB
@@ -127,6 +150,36 @@ The application uses a normalized SQLite schema:
 - **`ChapterContent`**: Section-level segments with headings
 - **`GeneratedSlide`**: AI-generated slide decks in JSON format
 - **`TableOfContents`**: Hierarchical TOC structure
+
+## 💬 Interactive Chatbot
+
+The built-in AI chatbot provides a natural conversation interface for studying your textbook content. It automatically searches your knowledge base and provides contextual answers.
+
+### Features
+
+- **🔍 Automatic Knowledge Base Search**: Uses function calling to query relevant slides
+- **💾 Conversation History**: Maintains chat history in `chat_history.json`
+- **🎯 Context-Aware Responses**: Integrates textbook content into conversational answers
+- **🛠️ Tool Integration**: Seamlessly combines search results with GPT responses
+
+### Example Conversation
+
+```python
+from studymathai.chatbot import ChatBot
+
+bot = ChatBot()
+
+# Natural language questions
+print(bot.get_response("What is a vector space?"))
+print(bot.get_response("Can you give me examples of linear transformations?"))
+print(bot.get_response("How do I prove linear independence?"))
+```
+
+The chatbot will automatically:
+1. Analyze your question
+2. Search the vector database for relevant slides
+3. Combine multiple sources if needed
+4. Provide a comprehensive, contextual answer
 
 ## 🔧 Configuration
 
@@ -164,13 +217,14 @@ The AI generates slides with:
 
 ## 🎯 Use Cases
 
-- **Students**: Convert dense textbooks into digestible study materials
-- **Educators**: Create structured presentations from academic content
+- **Students**: Convert dense textbooks into digestible study materials and get instant answers to questions
+- **Educators**: Create structured presentations from academic content and provide AI tutoring support
 - **Researchers**: Quickly search and reference specific concepts across large texts
 - **Self-learners**: Transform complex mathematical texts into accessible formats
 
 ## 🔮 Roadmap
 
+- [ ] Enhanced chatbot with math problem solving
 - [ ] Web interface with live markdown rendering
 - [ ] Quiz generation from slide content
 - [ ] Cross-reference detection between sections
