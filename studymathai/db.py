@@ -107,6 +107,10 @@ class DatabaseManager:
         with self.Session() as session:
             return session.query(ChapterContent).filter_by(chapter_id=chapter_id).all()
 
+    def get_segments_by_book(self, book_id: int):
+        with self.Session() as session:
+            return session.query(ChapterContent).filter_by(book_id=book_id).all()
+
     def add_generated_slide(self, content_id: int, book_id: int, slide_data: dict, model_info: str = "") -> Optional[GeneratedSlide]:
         with self.Session() as session:
             slide = GeneratedSlide(
@@ -149,6 +153,10 @@ class DatabaseManager:
                     title=title,
                     page_number=page_number
                 ).first()
+                
+    def get_toc_for_book(self, book_id: int):
+        with self.Session() as session:
+            return session.query(TableOfContents).filter_by(book_id=book_id).all()
 
     def get_toc_for_chapter(self, chapter_id: int) -> List[TableOfContents]:
         with self.Session() as session:
