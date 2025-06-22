@@ -5,10 +5,12 @@ from sqlalchemy.exc import IntegrityError
 import numpy as np
 from sentence_transformers import SentenceTransformer, util
     
-from .db import DatabaseManager
-from .models import PageText, BookContent, ChapterContent
+from .db import DatabaseConnection
+from .models import PageText, BookContent, ChapterContent, Book, TableOfContents
 from .utils import TextCleaner
 from studymathai.logging_config import get_logger
+import hashlib
+import json
 
 logger = get_logger(__name__)
 
@@ -17,14 +19,13 @@ class BookProcessor:
     """
     Orchestrates registration and shared PDF context for extractors.
     """
-    def __init__(self, filepath: str, db: DatabaseManager):
+    def __init__(self, filepath: str, db: DatabaseConnection):
         self.filepath = filepath
         self.db = db
         self.doc = fitz.open(filepath)
         self.book = self._register_book()
 
     def _compute_hash(self) -> str:
-        import hashlib
         hasher = hashlib.sha256()
         hasher.update(self.filepath.encode('utf-8'))
         with open(self.filepath, 'rb') as f:
@@ -34,33 +35,57 @@ class BookProcessor:
 
     def _register_book(self):
         book_hash = self._compute_hash()
-        existing = self.db.get_book_by_hash(book_hash)
         title = self.doc.metadata.get("title") or os.path.splitext(os.path.basename(self.filepath))[0]
-        return existing or self.db.add_book(book_hash, self.filepath, title)
+        
+        with self.db.get_session() as session:
+            # Check if book already exists
+            existing = session.query(Book).filter_by(book_hash=book_hash).first()
+            if existing:
+                return existing
+            
+            # Create new book
+            book = Book(book_hash=book_hash, file_path=self.filepath, title=title)
+            session.add(book)
+            try:
+                session.commit()
+                session.refresh(book)
+                return book
+            except IntegrityError:
+                session.rollback()
+                return session.query(Book).filter_by(book_hash=book_hash).first()
 
 
 class PageTextExtractor:
     """
-    Extracts and stores page-level text for a given book using the BookProcessor context.
+    Extracts page-by-page text content from PDF using the BookProcessor context.
     """
     def __init__(self, processor: BookProcessor):
         self.processor = processor
-        self.doc = processor.doc
         self.db = processor.db
         self.book = processor.book
+        self.doc = processor.doc
 
     def extract_and_store_pages(self):
-        for page_num in range(self.doc.page_count):
-            text = self.doc.load_page(page_num).get_text()
-            try:
-                self.db.add_page_text(
-                    book_id=self.book.id,
-                    page_number=page_num,
-                    page_text=text.strip()
-                )
-            except IntegrityError:
-                continue
-        logger.info(f"✅ Stored {self.doc.page_count} pages for book ID {self.book.id}")
+        with self.db.get_session() as session:
+            for page_num in range(self.doc.page_count):
+                page = self.doc.load_page(page_num)
+                text = page.get_text()
+                
+                # Check if page already exists
+                existing = session.query(PageText).filter_by(
+                    book_id=self.book.id, 
+                    page_number=page_num
+                ).first()
+                
+                if not existing:
+                    page_text = PageText(
+                        book_id=self.book.id,
+                        page_number=page_num,
+                        page_text=text
+                    )
+                    session.add(page_text)
+        
+        logger.info(f"✅ Extracted {self.doc.page_count} pages for book ID {self.book.id}")
 
 
 class BookContentExtractor:
@@ -104,24 +129,38 @@ class BookContentExtractor:
         return "\n".join(self.doc.load_page(i).get_text() for i in range(start, end + 1))
 
     def _save_toc_to_db(self, chapter_ranges_with_objs):
-        for level, title, page in self.toc:
-            chapter_id = None
-            if level > 1:
-                for _, start, end, chapter_obj in chapter_ranges_with_objs:
-                    if start <= page - 1 <= end:
-                        chapter_id = chapter_obj.id
-                        break
+        with self.db.get_session() as session:
+            for level, title, page in self.toc:
+                chapter_id = None
+                if level > 1:
+                    for _, start, end, chapter_obj in chapter_ranges_with_objs:
+                        if start <= page - 1 <= end:
+                            chapter_id = chapter_obj.id
+                            break
 
-            self.db.add_toc_entry(
-                book_id=self.book.id,
-                level=level,
-                title=title,
-                page_number=page,
-                chapter_id=chapter_id
-            )
+                # Check if TOC entry already exists
+                existing = session.query(TableOfContents).filter_by(
+                    book_id=self.book.id,
+                    level=level,
+                    title=title,
+                    page_number=page
+                ).first()
+                
+                if not existing:
+                    toc_entry = TableOfContents(
+                        book_id=self.book.id,
+                        chapter_id=chapter_id,
+                        level=level,
+                        title=title,
+                        page_number=page,
+                        parent_id=None  # You might want to implement parent_id logic
+                    )
+                    session.add(toc_entry)
 
     def extract_and_save(self):
-        existing_titles = {c.chapter_title for c in self.db.get_chapters_by_book(self.book.id)}
+        with self.db.get_session() as session:
+            existing_titles = {c.chapter_title for c in session.query(BookContent).filter_by(book_id=self.book.id).all()}
+        
         chapter_ranges_with_objs = []
 
         for title, start, end in self._get_filtered_chapter_ranges():
@@ -129,14 +168,28 @@ class BookContentExtractor:
                 continue
 
             text = self._extract_text(start, end)
-            chapter = self.db.add_chapter(
-                book_id=self.book.id,
-                title=title,
-                text=text.strip(),
-                start=start,
-                end=end
-            )
-            chapter_ranges_with_objs.append((title, start, end, chapter))
+            
+            with self.db.get_session() as session:
+                chapter = BookContent(
+                    book_id=self.book.id,
+                    chapter_title=title,
+                    chapter_text=text.strip(),
+                    start_page=start,
+                    end_page=end
+                )
+                session.add(chapter)
+                try:
+                    session.commit()
+                    session.refresh(chapter)
+                    chapter_ranges_with_objs.append((title, start, end, chapter))
+                except IntegrityError:
+                    session.rollback()
+                    existing = session.query(BookContent).filter_by(
+                        book_id=self.book.id, 
+                        chapter_title=title
+                    ).first()
+                    if existing:
+                        chapter_ranges_with_objs.append((title, start, end, existing))
 
         self._save_toc_to_db(chapter_ranges_with_objs)
         logger.info(f"✅ Extracted chapters and TOC for book ID {self.book.id}")
@@ -155,8 +208,15 @@ class PageAwareChapterSegmentor:
         self.db = processor.db
         self.book = processor.book
         self.text_cleaner = text_cleaner
-        self.headings = self.db.get_toc_for_chapter(chapter.id)
-        self.page_texts = {p.page_number: p.page_text for p in self.db.get_pages_by_book(chapter.book_id)}
+        
+        with self.db.get_session() as session:
+            self.headings = session.query(TableOfContents).filter(
+                TableOfContents.chapter_id == chapter.id,
+                TableOfContents.level > 1
+            ).all()
+            
+            pages = session.query(PageText).filter_by(book_id=chapter.book_id).all()
+            self.page_texts = {p.page_number: p.page_text for p in pages}
 
     def _find_heading_line(self, heading_title: str, page_text: str):
         lines = [line.strip() for line in page_text.splitlines() if line.strip()]
@@ -204,28 +264,48 @@ class PageAwareChapterSegmentor:
 
         heading_locs.sort(key=lambda x: x[1])
 
+        # Add main chapter segment
         first_idx = heading_locs[0][1] if heading_locs else len(all_lines)
         pre_text = "\n".join(all_lines[:first_idx])
-        self.db.add_chapter_segment(
-            chapter_id=self.chapter.id,
-            book_id=self.book.id,
-            level=1,
-            title=self.chapter.chapter_title,
-            text=pre_text.strip()
-        )
+        
+        with self.db.get_session() as session:
+            existing = session.query(ChapterContent).filter_by(
+                chapter_id=self.chapter.id,
+                heading_title=self.chapter.chapter_title
+            ).first()
+            
+            if not existing:
+                segment = ChapterContent(
+                    chapter_id=self.chapter.id,
+                    book_id=self.book.id,
+                    heading_level=1,
+                    heading_title=self.chapter.chapter_title,
+                    content_text=pre_text.strip(),
+                    parent_id=None
+                )
+                session.add(segment)
 
+        # Add sub-segments
         for i, (heading, idx) in enumerate(heading_locs):
             start = idx
             end = heading_locs[i + 1][1] if i + 1 < len(heading_locs) else len(all_lines)
             segment_text = "\n".join(all_lines[start:end])
 
-            self.db.add_chapter_segment(
-                chapter_id=self.chapter.id,
-                book_id=self.book.id,
-                level=heading.level,
-                title=heading.title,
-                text=segment_text.strip(),
-                parent_id=heading.parent_id
-            )
+            with self.db.get_session() as session:
+                existing = session.query(ChapterContent).filter_by(
+                    chapter_id=self.chapter.id,
+                    heading_title=heading.title
+                ).first()
+                
+                if not existing:
+                    segment = ChapterContent(
+                        chapter_id=self.chapter.id,
+                        book_id=self.book.id,
+                        heading_level=heading.level,
+                        heading_title=heading.title,
+                        content_text=segment_text.strip(),
+                        parent_id=heading.parent_id
+                    )
+                    session.add(segment)
 
         logger.info(f"✅ Segmented chapter {self.chapter.chapter_title} (ID: {self.chapter.id})")

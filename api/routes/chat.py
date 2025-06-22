@@ -6,10 +6,10 @@ import os
 import json
 from studymathai.chatbot import ContextAwareChatBot, ChatContextManager
 from studymathai.retriever import SlideRetriever
-from studymathai.db import DatabaseManager
+from studymathai.db import DatabaseConnection
 
 router = APIRouter()
-db = DatabaseManager()
+db = DatabaseConnection()
 
 # ──────────────── Request & Response Models ────────────────
 

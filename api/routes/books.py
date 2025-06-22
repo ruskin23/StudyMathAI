@@ -8,12 +8,13 @@ import shutil
 from typing import List
 from studymathai.processor import PageTextExtractor, BookContentExtractor, BookProcessor
 from studymathai.generator import SlideGenerator
-from studymathai.db import DatabaseManager
+from studymathai.db import DatabaseConnection
+from studymathai.models import Book, BookContent, ChapterContent, TableOfContents, GeneratedSlide
 from studymathai.utils import TextCleaner
 from studymathai.processor import PageAwareChapterSegmentor
 
 router = APIRouter()
-db = DatabaseManager()
+db = DatabaseConnection()
 
 data_dir = os.getenv("PDF_DIRECTORY", "./uploads")
 os.makedirs(data_dir, exist_ok=True)
@@ -93,7 +94,10 @@ def process_pdf(file: UploadFile = File(...)):
         content_extractor.extract_and_save()
 
         # === 5. Segment each chapter into heading-text blocks
-        for chapter in db.get_chapters_by_book(processor.book.id):
+        with db.get_session() as session:
+            chapters = session.query(BookContent).filter_by(book_id=processor.book.id).all()
+            
+        for chapter in chapters:
             print(f"Segmenting chapter: {chapter.chapter_title}")
             segmentor = PageAwareChapterSegmentor(processor, chapter, text_cleaner)
             segmentor.segment_and_store()
@@ -118,7 +122,8 @@ def process_pdf(file: UploadFile = File(...)):
 
 @router.get("/", response_model=List[BookMetadata])
 def list_books():
-    books = db.get_books()
+    with db.get_session() as session:
+        books = session.query(Book).all()
     return [
         BookMetadata(id=b.id, title=b.title, file_path=b.file_path)
         for b in books
@@ -127,7 +132,8 @@ def list_books():
 
 @router.get("/{book_id}", response_model=BookDetail)
 def get_book(book_id: int):
-    book = db.get_book_by_id(book_id)
+    with db.get_session() as session:
+        book = session.query(Book).filter_by(id=book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return BookDetail(
@@ -139,11 +145,13 @@ def get_book(book_id: int):
 
 @router.get("/{book_id}/toc", response_model=List[TOCEntry])
 def get_toc(book_id: int):
-    book = db.get_book_by_id(book_id)
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+    with db.get_session() as session:
+        book = session.query(Book).filter_by(id=book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="Book not found")
 
-    entries = db.get_toc_for_book(book.id)
+        entries = session.query(TableOfContents).filter_by(book_id=book.id).all()
+        
     return [
         TOCEntry(
             id=e.id,
@@ -156,11 +164,13 @@ def get_toc(book_id: int):
 
 @router.get("/{book_id}/chapters", response_model=List[ChapterInfo])
 def get_chapters(book_id: int):
-    book = db.get_book_by_id(book_id)
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+    with db.get_session() as session:
+        book = session.query(Book).filter_by(id=book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="Book not found")
 
-    chapters = db.get_chapters_by_book(book.id)
+        chapters = session.query(BookContent).filter_by(book_id=book.id).all()
+        
     return [
         ChapterInfo(
             id=c.id,
@@ -172,11 +182,13 @@ def get_chapters(book_id: int):
 
 @router.get("/{book_id}/segments", response_model=List[SegmentInfo])
 def get_segments(book_id: int):
-    book = db.get_book_by_id(book_id)
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+    with db.get_session() as session:
+        book = session.query(Book).filter_by(id=book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="Book not found")
 
-    segments = db.get_segments_by_book(book.id)
+        segments = session.query(ChapterContent).filter_by(book_id=book.id).all()
+        
     return [
         SegmentInfo(
             id=s.id,
@@ -190,14 +202,18 @@ def get_segments(book_id: int):
 
 @router.get("/{book_id}/slides", response_model=List[SlideDeck])
 def get_slides(book_id: int):
-    book = db.get_book_by_id(book_id)
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+    with db.get_session() as session:
+        book = session.query(Book).filter_by(id=book_id).first()
+        if not book:
+            raise HTTPException(status_code=404, detail="Book not found")
 
-    segments = db.get_segments_by_book(book.id)
+        segments = session.query(ChapterContent).filter_by(book_id=book.id).all()
+        
     result = []
     for segment in segments:
-        slide_obj = db.get_slides_for_segment(segment.id)
+        with db.get_session() as session:
+            slide_obj = session.query(GeneratedSlide).filter_by(content_id=segment.id).first()
+            
         if slide_obj:
             try:
                 parsed = json.loads(slide_obj.slides_json)

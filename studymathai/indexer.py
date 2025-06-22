@@ -1,9 +1,12 @@
 # vector_indexer.py
 
+import os
 import json
+import numpy as np
 import chromadb
 from sentence_transformers import SentenceTransformer
-from studymathai.db import DatabaseManager
+
+from studymathai.db import DatabaseConnection
 from studymathai.models import GeneratedSlide, ChapterContent
 
 import os
@@ -12,18 +15,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class SlideVectorIndexer:
-    def __init__(self, db: DatabaseManager):
+    def __init__(self, db: DatabaseConnection, persist_dir: str = "./chroma_index"):
         self.db = db
+        self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.client = chromadb.PersistentClient(path=persist_dir)
 
-        chroma_dir = os.getenv("CHROMA_DIRECTORY", "./chroma_index")
-        embedding_model = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
-
-        self.embedding_model = SentenceTransformer(embedding_model)
-        self.client = chromadb.PersistentClient(path=chroma_dir)
-        self.collection = self.client.get_or_create_collection(name="slides")
-
-    def flatten_slide(self, slide):
-        return f"{slide['title']}. " + " ".join(slide["bullets"])
+        try:
+            self.collection = self.client.get_collection(name="slides")
+        except ValueError:
+            # Collection doesn't exist, create it
+            self.collection = self.client.create_collection(name="slides")
+            print("📚 Created new collection: slides")
 
     def index_all_slides(self, book_id: int = None):
         """
@@ -31,7 +33,7 @@ class SlideVectorIndexer:
         2. for each slide deck, get the content (segment) id to get the heading details.
         """
         
-        with self.db.connection.get_session() as session:
+        with self.db.get_session() as session:
             query = session.query(GeneratedSlide)
 
             if book_id is not None:
@@ -52,24 +54,40 @@ class SlideVectorIndexer:
                     print(f"⚠️  Skipping content_id {content_id}: {e}")
                     continue
 
+                if not slides:
+                    print(f"⚠️  No slides found for content_id {content_id}")
+                    continue
+
+                slide_texts = []
+                slide_ids = []
+                slide_metas = []
+
                 for i, slide in enumerate(slides):
-                    try:
-                        flat_text = self.flatten_slide(slide)
-                        embedding = self.embedding_model.encode(flat_text)
+                    title = slide.get("title", "")
+                    bullets = slide.get("bullets", [])
+                    slide_text = f"{title}\n" + "\n".join(bullets)
+                    slide_texts.append(slide_text)
+                    slide_ids.append(f"{content_id}_slide_{i}")
+                    slide_metas.append({
+                        "content_id": content_id,
+                        "slide_index": i,
+                        "heading_title": heading_title,
+                        "slide_title": title
+                    })
 
-                        self.collection.add(
-                            documents=[flat_text],
-                            embeddings=[embedding],
-                            ids=[f"{content_id}_{i}"],
-                            metadatas=[{
-                                "slide_index": i,
-                                "content_id": content_id,
-                                "heading_title": heading_title,
-                                "chapter_id": heading.chapter_id if heading else None,
-                                "book_id": deck.book_id
-                            }]
-                        )
-                    except Exception as e:
-                        print(f"❌ Error indexing slide {content_id}_{i}: {e}")
+                try:
+                    # Generate embeddings
+                    embeddings = self.embedding_model.encode(slide_texts)
+                    
+                    # Add to collection
+                    self.collection.add(
+                        embeddings=embeddings.tolist(),
+                        documents=slide_texts,
+                        metadatas=slide_metas,
+                        ids=slide_ids
+                    )
+                    print(f"✅ Indexed {len(slides)} slides for content_id {content_id}")
+                except Exception as e:
+                    print(f"❌ Failed to index content_id {content_id}: {e}")
 
-        print("✅ Vector index complete.")
+        print("✅ Indexing complete!")

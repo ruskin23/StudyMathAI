@@ -1,9 +1,11 @@
 import os
 import json
 from openai import OpenAI
-from studymathai.db import DatabaseManager
+from studymathai.db import DatabaseConnection
+from studymathai.models import BookContent, ChapterContent, GeneratedSlide
 from pydantic import BaseModel
 from typing import List
+from sqlalchemy.exc import IntegrityError
 
 # --- Slide Model Schema ---
 
@@ -23,7 +25,7 @@ class SlideGenerator:
     Stores output in the GeneratedSlide table.
     """
 
-    def __init__(self, db: DatabaseManager):
+    def __init__(self, db: DatabaseConnection):
         self.db = db
         self.model=os.getenv("MODEL_NAME")
         self.client = OpenAI(api_key=os.getenv("OPEN_API_KEY"))
@@ -112,21 +114,39 @@ class SlideGenerator:
         return response.output_parsed
 
     def process_book(self, book_id: int):
-        chapters = self.db.get_chapters_by_book(book_id)
+        with self.db.get_session() as session:
+            chapters = session.query(BookContent).filter_by(book_id=book_id).all()
+            
         for chapter in chapters:
-            segments = self.db.get_segments_by_chapter(chapter.id)
+            with self.db.get_session() as session:
+                segments = session.query(ChapterContent).filter_by(chapter_id=chapter.id).all()
+                
             for segment in segments:
                 if not segment.content_text or len(segment.content_text.split()) < 20:
                     continue
-                if self.db.get_slides_for_segment(segment.id):
-                    continue
+                
+                # Check if slides already exist for this segment
+                with self.db.get_session() as session:
+                    existing = session.query(GeneratedSlide).filter_by(content_id=segment.id).first()
+                    if existing:
+                        continue
 
                 print(f"Generating slides for: {segment.heading_title}")
                 slide_deck = self.generate_slides(segment.content_text, segment.heading_title)
-                self.db.slides.add_slide(
-                    content_id=segment.id,
-                    book_id=segment.book_id, 
-                    slide_data=slide_deck.model_dump(),
-                    model_info=self.model
-                )
+                
+                with self.db.get_session() as session:
+                    slide = GeneratedSlide(
+                        content_id=segment.id,
+                        book_id=segment.book_id,
+                        slides_json=json.dumps(slide_deck.model_dump()),
+                        model_info=self.model
+                    )
+                    session.add(slide)
+                    try:
+                        session.commit()
+                    except IntegrityError:
+                        session.rollback()
+                        # Slide already exists, skip
+                        continue
+                        
         print("✅ Slide generation complete.")

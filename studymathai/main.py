@@ -2,11 +2,12 @@ import os
 import argparse
 from dotenv import load_dotenv
 
-from studymathai.db import DatabaseManager
+from studymathai.db import DatabaseConnection
 from studymathai.utils import TextCleaner
 from studymathai.processor import BookProcessor, PageTextExtractor, BookContentExtractor, PageAwareChapterSegmentor
 from studymathai.generator import SlideGenerator
 from studymathai.chatbot import ChatBot
+from studymathai.models import BookContent
 
 def parse_args():
     parser = argparse.ArgumentParser(description="StudyMathAI pipeline runner")
@@ -34,7 +35,7 @@ def main():
     filepath = os.path.join(fileloc, filename)
     print(f"Filepath = {filepath}")
     
-    db = DatabaseManager()
+    db = DatabaseConnection()
     text_cleaner = TextCleaner()
 
     # === 2. Book context ===
@@ -49,7 +50,10 @@ def main():
     content_extractor.extract_and_save()
 
     # === 5. Segment each chapter into heading-text blocks
-    for chapter in db.get_chapters_by_book(processor.book.id):
+    with db.get_session() as session:
+        chapters = session.query(BookContent).filter_by(book_id=processor.book.id).all()
+        
+    for chapter in chapters:
         print(f"Segmenting chapter: {chapter.chapter_title}")
         segmentor = PageAwareChapterSegmentor(processor, chapter, text_cleaner)
         segmentor.segment_and_store()

@@ -2,13 +2,13 @@
 
 import chromadb
 from sentence_transformers import SentenceTransformer
-from studymathai.db import DatabaseManager
+from studymathai.db import DatabaseConnection
 from studymathai.models import GeneratedSlide
 import json
 
 
 class SlideRetriever:
-    def __init__(self, db: DatabaseManager, persist_dir: str = "./chroma_index"):
+    def __init__(self, db: DatabaseConnection, persist_dir: str = "./chroma_index"):
         self.db = db
         self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
         self.client = chromadb.PersistentClient(path=persist_dir)
@@ -50,7 +50,9 @@ class SlideRetriever:
         return hits
 
     def get_slide_deck(self, content_id: int):
-        deck = self.db.get_slides_for_segment(content_id)
+        with self.db.get_session() as session:
+            deck = session.query(GeneratedSlide).filter_by(content_id=content_id).first()
+            
         if not deck:
             return None
 
