@@ -29,6 +29,7 @@ chroma_index/
 
 # Misc
 .DS_Store
+.sh
 
 # test scripts
 dev_scripts/

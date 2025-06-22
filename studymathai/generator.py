@@ -123,7 +123,7 @@ class SlideGenerator:
 
                 print(f"Generating slides for: {segment.heading_title}")
                 slide_deck = self.generate_slides(segment.content_text, segment.heading_title)
-                self.db.add_generated_slide(
+                self.db.slides.add_slide(
                     content_id=segment.id,
                     book_id=segment.book_id, 
                     slide_data=slide_deck.model_dump(),
