@@ -23,7 +23,8 @@ class BookProcessor:
         self.filepath = filepath
         self.db = db
         self.doc = fitz.open(filepath)
-        self.book = self._register_book()
+        self.book_data = self._register_book()
+        self.book_id = self.book_data['id']
 
     def _compute_hash(self) -> str:
         hasher = hashlib.sha256()
@@ -41,18 +42,21 @@ class BookProcessor:
             # Check if book already exists
             existing = session.query(Book).filter_by(book_hash=book_hash).first()
             if existing:
-                return existing
+                return {
+                    'id': existing.id,
+                    'title': existing.title,
+                    'file_path': existing.file_path
+                }
             
             # Create new book
             book = Book(book_hash=book_hash, file_path=self.filepath, title=title)
             session.add(book)
-            try:
-                session.commit()
-                session.refresh(book)
-                return book
-            except IntegrityError:
-                session.rollback()
-                return session.query(Book).filter_by(book_hash=book_hash).first()
+            session.refresh(book)
+            return {
+                'id': book.id,
+                'title': book.title,
+                'file_path': book.file_path
+            }
 
 
 class PageTextExtractor:
@@ -62,7 +66,7 @@ class PageTextExtractor:
     def __init__(self, processor: BookProcessor):
         self.processor = processor
         self.db = processor.db
-        self.book = processor.book
+        self.book_id = processor.book_id
         self.doc = processor.doc
 
     def extract_and_store_pages(self):
@@ -73,19 +77,20 @@ class PageTextExtractor:
                 
                 # Check if page already exists
                 existing = session.query(PageText).filter_by(
-                    book_id=self.book.id, 
+                    book_id=self.book_id, 
                     page_number=page_num
                 ).first()
                 
                 if not existing:
                     page_text = PageText(
-                        book_id=self.book.id,
+                        book_id=self.book_id,
                         page_number=page_num,
                         page_text=text
                     )
                     session.add(page_text)
         
-        logger.info(f"✅ Extracted {self.doc.page_count} pages for book ID {self.book.id}")
+        logger.info(f"✅ Extracted {self.doc.page_count} pages for book ID {self.book_id}")
+        return self.doc.page_count
 
 
 class BookContentExtractor:
@@ -96,7 +101,7 @@ class BookContentExtractor:
     def __init__(self, processor: BookProcessor):
         self.processor = processor
         self.db = processor.db
-        self.book = processor.book
+        self.book_id = processor.book_id
         self.doc = processor.doc
         self.toc = self.doc.get_toc(simple=True)
 
@@ -140,7 +145,7 @@ class BookContentExtractor:
 
                 # Check if TOC entry already exists
                 existing = session.query(TableOfContents).filter_by(
-                    book_id=self.book.id,
+                    book_id=self.book_id,
                     level=level,
                     title=title,
                     page_number=page
@@ -148,7 +153,7 @@ class BookContentExtractor:
                 
                 if not existing:
                     toc_entry = TableOfContents(
-                        book_id=self.book.id,
+                        book_id=self.book_id,
                         chapter_id=chapter_id,
                         level=level,
                         title=title,
@@ -159,9 +164,11 @@ class BookContentExtractor:
 
     def extract_and_save(self):
         with self.db.get_session() as session:
-            existing_titles = {c.chapter_title for c in session.query(BookContent).filter_by(book_id=self.book.id).all()}
+            existing_titles = {c.chapter_title for c in session.query(BookContent).filter_by(book_id=self.book_id).all()}
         
         chapter_ranges_with_objs = []
+        chapters_count = 0
+        toc_count = 0
 
         for title, start, end in self._get_filtered_chapter_ranges():
             if title in existing_titles:
@@ -171,28 +178,21 @@ class BookContentExtractor:
             
             with self.db.get_session() as session:
                 chapter = BookContent(
-                    book_id=self.book.id,
+                    book_id=self.book_id,
                     chapter_title=title,
                     chapter_text=text.strip(),
                     start_page=start,
                     end_page=end
                 )
                 session.add(chapter)
-                try:
-                    session.commit()
-                    session.refresh(chapter)
-                    chapter_ranges_with_objs.append((title, start, end, chapter))
-                except IntegrityError:
-                    session.rollback()
-                    existing = session.query(BookContent).filter_by(
-                        book_id=self.book.id, 
-                        chapter_title=title
-                    ).first()
-                    if existing:
-                        chapter_ranges_with_objs.append((title, start, end, existing))
+                session.refresh(chapter)
+                chapter_ranges_with_objs.append((title, start, end, chapter))
+                chapters_count += 1
 
         self._save_toc_to_db(chapter_ranges_with_objs)
-        logger.info(f"✅ Extracted chapters and TOC for book ID {self.book.id}")
+        toc_count = len(self.toc)
+        logger.info(f"✅ Extracted chapters and TOC for book ID {self.book_id}")
+        return chapters_count, toc_count
 
 
 
@@ -206,7 +206,7 @@ class PageAwareChapterSegmentor:
         self.processor = processor
         self.chapter = chapter
         self.db = processor.db
-        self.book = processor.book
+        self.book_id = processor.book_id
         self.text_cleaner = text_cleaner
         
         with self.db.get_session() as session:
@@ -241,7 +241,7 @@ class PageAwareChapterSegmentor:
     def segment_and_store(self):
         if not self.headings:
             logger.info(f"No TOC entries found for chapter {self.chapter.id}")
-            return
+            return 0
 
         all_lines = []
         line_map = []
@@ -263,6 +263,7 @@ class PageAwareChapterSegmentor:
             heading_locs.append((heading, prior_lines + idx))
 
         heading_locs.sort(key=lambda x: x[1])
+        segments_created = 0
 
         # Add main chapter segment
         first_idx = heading_locs[0][1] if heading_locs else len(all_lines)
@@ -277,13 +278,14 @@ class PageAwareChapterSegmentor:
             if not existing:
                 segment = ChapterContent(
                     chapter_id=self.chapter.id,
-                    book_id=self.book.id,
+                    book_id=self.book_id,
                     heading_level=1,
                     heading_title=self.chapter.chapter_title,
                     content_text=pre_text.strip(),
                     parent_id=None
                 )
                 session.add(segment)
+                segments_created += 1
 
         # Add sub-segments
         for i, (heading, idx) in enumerate(heading_locs):
@@ -300,12 +302,14 @@ class PageAwareChapterSegmentor:
                 if not existing:
                     segment = ChapterContent(
                         chapter_id=self.chapter.id,
-                        book_id=self.book.id,
+                        book_id=self.book_id,
                         heading_level=heading.level,
                         heading_title=heading.title,
                         content_text=segment_text.strip(),
                         parent_id=heading.parent_id
                     )
                     session.add(segment)
+                    segments_created += 1
 
         logger.info(f"✅ Segmented chapter {self.chapter.chapter_title} (ID: {self.chapter.id})")
+        return segments_created
