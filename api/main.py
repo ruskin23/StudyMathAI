@@ -3,7 +3,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import chat, search, books, pipeline
+from api.routes import chat, books, processing, content
 
 
 app = FastAPI(title="StudyMathAI API")
@@ -19,9 +19,9 @@ app.add_middleware(
 
 # Register routes
 app.include_router(chat.router, prefix="/chat", tags=["Chat"])
-app.include_router(search.router, prefix="/search", tags=["Search"])
 app.include_router(books.router, prefix="/books", tags=["Books"])
-app.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
+app.include_router(processing.router, prefix="/processing", tags=["Processing"])
+app.include_router(content.router, prefix="/content", tags=["Content"])
 
 @app.get("/health")
 def health_check():
