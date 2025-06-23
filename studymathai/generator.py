@@ -142,11 +142,5 @@ class SlideGenerator:
                         model_info=self.model
                     )
                     session.add(slide)
-                    try:
-                        session.commit()
-                    except IntegrityError:
-                        session.rollback()
-                        # Slide already exists, skip
-                        continue
                         
         print("✅ Slide generation complete.")
