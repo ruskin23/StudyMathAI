@@ -87,18 +87,25 @@ def get_book(book_id: int):
 @router.delete("/{book_id}")
 def delete_book(book_id: int):
     """Delete a book and its associated data."""
+    print("Book ID: ", book_id)
     try:
         with db.get_session() as session:
             book = session.query(Book).filter_by(id=book_id).first()
             if not book:
                 raise HTTPException(status_code=404, detail="Book not found")
             
-            # Delete the physical file if it exists
-            if os.path.exists(book.file_path):
-                os.remove(book.file_path)
+            # Store file path for deletion after database transaction
+            file_path = book.file_path
             
+            print("Book: ", book)
             # Delete from database (this should cascade to related tables)
             session.delete(book)
+            session.flush()  # Flush to ensure database operations complete
+            print("Book deleted: ", book)
+            
+        # Delete the physical file after successful database deletion
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
             
         return {"message": f"Book {book_id} deleted successfully"}
     except Exception as e:

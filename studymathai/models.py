@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON, UniqueConstraint
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base, relationship, backref
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -13,10 +13,10 @@ class Book(Base):
     title = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    contents = relationship("BookContent", back_populates="book")
-    chapters = relationship("ChapterContent", back_populates="book")
-    toc_entries = relationship("TableOfContents", back_populates="book")
-    pages = relationship("PageText", back_populates="book")
+    contents = relationship("BookContent", back_populates="book", cascade="all, delete-orphan")
+    chapters = relationship("ChapterContent", back_populates="book", cascade="all, delete-orphan")
+    toc_entries = relationship("TableOfContents", back_populates="book", cascade="all, delete-orphan")
+    pages = relationship("PageText", back_populates="book", cascade="all, delete-orphan")
 
 
 class BookContent(Base):
@@ -34,8 +34,8 @@ class BookContent(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     book = relationship("Book", back_populates="contents")
-    chapter_segments = relationship("ChapterContent", back_populates="chapter")
-    toc_entries = relationship("TableOfContents", back_populates="chapter")
+    chapter_segments = relationship("ChapterContent", back_populates="chapter", cascade="all, delete-orphan")
+    toc_entries = relationship("TableOfContents", back_populates="chapter", cascade="all, delete-orphan")
 
 
 class TableOfContents(Base):
@@ -54,7 +54,7 @@ class TableOfContents(Base):
 
     book = relationship("Book", back_populates="toc_entries")
     chapter = relationship("BookContent", back_populates="toc_entries")
-    parent = relationship("TableOfContents", remote_side=[id], backref="children")
+    parent = relationship("TableOfContents", remote_side=[id], backref=backref("children", cascade="all, delete-orphan"))
 
 
 class ChapterContent(Base):
@@ -73,8 +73,8 @@ class ChapterContent(Base):
 
     chapter = relationship("BookContent", back_populates="chapter_segments")
     book = relationship("Book", back_populates="chapters")
-    parent = relationship("ChapterContent", remote_side=[id], backref="subsections")
-    slides = relationship("GeneratedSlide", back_populates="content")
+    parent = relationship("ChapterContent", remote_side=[id], backref=backref("subsections", cascade="all, delete-orphan"))
+    slides = relationship("GeneratedSlide", back_populates="content", cascade="all, delete-orphan")
 
 
 class GeneratedSlide(Base):
