@@ -6,9 +6,11 @@ import json
 from studymathai.generator import SlideGenerator
 from studymathai.db import DatabaseConnection
 from studymathai.models import Book, ChapterContent, GeneratedSlide
+from studymathai.processing_status import ProcessingStatusManager
 
 router = APIRouter()
 db = DatabaseConnection()
+status_manager = ProcessingStatusManager(db)
 
 # ──────────────── Response Models ────────────────
 
@@ -45,6 +47,9 @@ def generate_slides(book_id: int):
         # Generate slides using AI
         slidegen = SlideGenerator(db)
         slides_count = slidegen.process_book(book_id)
+
+        # Set the slides_generated flag to True
+        status_manager.set_slides_generated(book_id)
 
         return SlideGenerationResponse(
             message=f"Successfully generated slides for {slides_count} segments",
