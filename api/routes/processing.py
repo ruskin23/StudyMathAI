@@ -49,14 +49,15 @@ class SegmentationResponse(ProcessingResponse):
 def extract_pages(book_id: int):
     """Extract page-level text from a book."""
     try:
+        # Get book file path
         with db.get_session() as session:
             book = session.query(Book).filter_by(id=book_id).first()
             if not book:
                 raise HTTPException(status_code=404, detail="Book not found")
+            book_file_path = book.file_path
 
-        # Initialize processor
-        processor = BookProcessor(book.file_path, db)
-        processor.book = book  # Use existing book record
+        # Initialize processor - it handles its own book registration/lookup
+        processor = BookProcessor(book_file_path, db)
 
         # Extract page-level text
         page_extractor = PageTextExtractor(processor)
@@ -79,14 +80,15 @@ def extract_pages(book_id: int):
 def extract_content(book_id: int):
     """Extract chapters and table of contents from a book."""
     try:
+        # Get book file path
         with db.get_session() as session:
             book = session.query(Book).filter_by(id=book_id).first()
             if not book:
                 raise HTTPException(status_code=404, detail="Book not found")
+            book_file_path = book.file_path
 
-        # Initialize processor
-        processor = BookProcessor(book.file_path, db)
-        processor.book = book  # Use existing book record
+        # Initialize processor - it handles its own book registration/lookup
+        processor = BookProcessor(book_file_path, db)
 
         # Extract chapters and TOC entries
         content_extractor = BookContentExtractor(processor)
@@ -110,32 +112,36 @@ def extract_content(book_id: int):
 def segment_chapters(book_id: int):
     """Segment chapters into heading-text blocks."""
     try:
+        # Get book file path and verify chapters exist
         with db.get_session() as session:
             book = session.query(Book).filter_by(id=book_id).first()
             if not book:
                 raise HTTPException(status_code=404, detail="Book not found")
+            book_file_path = book.file_path
             
-            chapters = session.query(BookContent).filter_by(book_id=book_id).all()
-            if not chapters:
+            chapters_count = session.query(BookContent).filter_by(book_id=book_id).count()
+            if chapters_count == 0:
                 raise HTTPException(status_code=400, detail="No chapters found. Run content extraction first.")
 
-        # Initialize processor and text cleaner
-        processor = BookProcessor(book.file_path, db)
-        processor.book = book  # Use existing book record
+        # Initialize processor - it handles its own book registration/lookup
+        processor = BookProcessor(book_file_path, db)
         text_cleaner = TextCleaner()
 
+        # Process chapters within their own session contexts
         total_segments = 0
-        for chapter in chapters:
-            print(f"Segmenting chapter: {chapter.chapter_title}")
-            segmentor = PageAwareChapterSegmentor(processor, chapter, text_cleaner)
-            segments_count = segmentor.segment_and_store()
-            total_segments += segments_count
+        with db.get_session() as session:
+            chapters = session.query(BookContent).filter_by(book_id=book_id).all()
+            for chapter in chapters:
+                print(f"Segmenting chapter: {chapter.chapter_title}")
+                segmentor = PageAwareChapterSegmentor(processor, chapter, text_cleaner)
+                segments_count = segmentor.segment_and_store()
+                total_segments += segments_count
 
         # Set the chapters_segmented flag to True
         status_manager.set_chapters_segmented(book_id)
 
         return SegmentationResponse(
-            message=f"Successfully segmented {len(chapters)} chapters into {total_segments} segments",
+            message=f"Successfully segmented {chapters_count} chapters into {total_segments} segments",
             book_id=book_id,
             success=True,
             segments_created=total_segments
