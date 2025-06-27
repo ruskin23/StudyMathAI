@@ -8,11 +8,23 @@ from studymathai.db import DatabaseConnection
 from studymathai.models import Book, BookContent, ChapterContent
 from studymathai.utils import TextCleaner
 from studymathai.processor import PageAwareChapterSegmentor
+from studymathai.processing_status import ProcessingStatusManager
 
 router = APIRouter()
 db = DatabaseConnection()
+status_manager = ProcessingStatusManager(db)
 
 # ──────────────── Response Models ────────────────
+
+class ProcessingStatusResponse(BaseModel):
+    book_id: int
+    content_extracted: bool
+    pages_extracted: bool
+    chapters_segmented: bool
+    slides_generated: bool
+    slides_indexed: bool
+    created_at: str
+    updated_at: str
 
 class ProcessingResponse(BaseModel):
     message: str
@@ -50,6 +62,9 @@ def extract_pages(book_id: int):
         page_extractor = PageTextExtractor(processor)
         page_count = page_extractor.extract_and_store_pages()
 
+        # Set the pages_extracted flag to True
+        status_manager.set_pages_extracted(book_id)
+
         return PageExtractionResponse(
             message=f"Successfully extracted {page_count} pages",
             book_id=book_id,
@@ -76,6 +91,9 @@ def extract_content(book_id: int):
         # Extract chapters and TOC entries
         content_extractor = BookContentExtractor(processor)
         chapters_count, toc_count = content_extractor.extract_and_save()
+
+        # Set the content_extracted flag to True
+        status_manager.set_content_extracted(book_id)
 
         return ContentExtractionResponse(
             message=f"Successfully extracted {chapters_count} chapters and {toc_count} TOC entries",
@@ -113,6 +131,9 @@ def segment_chapters(book_id: int):
             segments_count = segmentor.segment_and_store()
             total_segments += segments_count
 
+        # Set the chapters_segmented flag to True
+        status_manager.set_chapters_segmented(book_id)
+
         return SegmentationResponse(
             message=f"Successfully segmented {len(chapters)} chapters into {total_segments} segments",
             book_id=book_id,
@@ -143,4 +164,30 @@ def process_complete_pipeline(book_id: int):
             success=True
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Complete pipeline processing failed: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Complete pipeline processing failed: {str(e)}")
+
+
+@router.get("/status/{book_id}", response_model=ProcessingStatusResponse)
+def get_processing_status(book_id: int):
+    """Get the current processing status for a book."""
+    try:
+        with db.get_session() as session:
+            book = session.query(Book).filter_by(id=book_id).first()
+            if not book:
+                raise HTTPException(status_code=404, detail="Book not found")
+        
+        # Get or create processing status
+        status_data = status_manager.get_processing_status(book_id)
+        
+        return ProcessingStatusResponse(
+            book_id=book_id,
+            content_extracted=status_data['content_extracted'],
+            pages_extracted=status_data['pages_extracted'],
+            chapters_segmented=status_data['chapters_segmented'],
+            slides_generated=status_data['slides_generated'],
+            slides_indexed=status_data['slides_indexed'],
+            created_at=status_data['created_at'].isoformat() if status_data['created_at'] else None,
+            updated_at=status_data['updated_at'].isoformat() if status_data['updated_at'] else None
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get processing status: {str(e)}") 
