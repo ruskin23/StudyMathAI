@@ -52,13 +52,6 @@ class BookProcessor:
             book = Book(book_hash=book_hash, file_path=self.filepath, title=title)
             session.add(book)
             session.flush()  # Flush to get the auto-generated ID
-            
-            print("Book Created:")
-            print({
-                'id': book.id,
-                'title': book.title,
-                'file_path': book.file_path
-            })
 
             return {
                 'id': book.id,
@@ -119,7 +112,6 @@ class BookContentExtractor:
     def _get_filtered_chapter_ranges(self):
         toc = self.toc
         filtered = []
-
         for i, (level, title, page) in enumerate(toc):
             if level != 1:
                 continue
@@ -146,9 +138,8 @@ class BookContentExtractor:
             for level, title, page in self.toc:
                 chapter_id = None
                 if level > 1:
-                    for _, start, end, chapter_obj in chapter_ranges_with_objs:
+                    for _, start, end, chapter_id in chapter_ranges_with_objs:
                         if start <= page - 1 <= end:
-                            chapter_id = chapter_obj.id
                             break
 
                 # Check if TOC entry already exists
@@ -173,7 +164,6 @@ class BookContentExtractor:
     def extract_and_save(self):
         with self.db.get_session() as session:
             existing_titles = {c.chapter_title for c in session.query(BookContent).filter_by(book_id=self.book_id).all()}
-        
         chapter_ranges_with_objs = []
         chapters_count = 0
         toc_count = 0
@@ -181,9 +171,7 @@ class BookContentExtractor:
         for title, start, end in self._get_filtered_chapter_ranges():
             if title in existing_titles:
                 continue
-
             text = self._extract_text(start, end)
-            
             with self.db.get_session() as session:
                 chapter = BookContent(
                     book_id=self.book_id,
@@ -193,10 +181,8 @@ class BookContentExtractor:
                     end_page=end
                 )
                 session.add(chapter)
-                session.refresh(chapter)
-                chapter_ranges_with_objs.append((title, start, end, chapter))
+                chapter_ranges_with_objs.append((title, start, end, chapter.id))
                 chapters_count += 1
-
         self._save_toc_to_db(chapter_ranges_with_objs)
         toc_count = len(self.toc)
         logger.info(f"✅ Extracted chapters and TOC for book ID {self.book_id}")
