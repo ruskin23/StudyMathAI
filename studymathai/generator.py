@@ -114,6 +114,7 @@ class SlideGenerator:
         return response.output_parsed
 
     def process_book(self, book_id: int):
+        slides_generated_count = 0
         with self.db.get_session() as session:
             chapters = session.query(BookContent).filter_by(book_id=book_id).all()
             
@@ -142,5 +143,7 @@ class SlideGenerator:
                         model_info=self.model
                     )
                     session.add(slide)
+                    slides_generated_count += 1
                         
         print("✅ Slide generation complete.")
+        return slides_generated_count
