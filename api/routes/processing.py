@@ -86,14 +86,11 @@ def extract_content(book_id: int):
             if not book:
                 raise HTTPException(status_code=404, detail="Book not found")
             book_file_path = book.file_path
-
         # Initialize processor - it handles its own book registration/lookup
         processor = BookProcessor(book_file_path, db)
-
         # Extract chapters and TOC entries
         content_extractor = BookContentExtractor(processor)
         chapters_count, toc_count = content_extractor.extract_and_save()
-
         # Set the content_extracted flag to True
         status_manager.set_content_extracted(book_id)
 
@@ -132,7 +129,6 @@ def segment_chapters(book_id: int):
         with db.get_session() as session:
             chapters = session.query(BookContent).filter_by(book_id=book_id).all()
             for chapter in chapters:
-                print(f"Segmenting chapter: {chapter.chapter_title}")
                 segmentor = PageAwareChapterSegmentor(processor, chapter, text_cleaner)
                 segments_count = segmentor.segment_and_store()
                 total_segments += segments_count
