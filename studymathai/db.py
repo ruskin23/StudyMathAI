@@ -2,7 +2,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
-from studymathai.models import Base, Book, BookContent, ChapterContent, GeneratedSlide, TableOfContents, PageText
+from studymathai.models import Base, Book, BookContent, ChapterContent, GeneratedSlide, TableOfContents, PageText, ProcessingStatus
 import json
 from typing import List, Optional
 from contextlib import contextmanager
