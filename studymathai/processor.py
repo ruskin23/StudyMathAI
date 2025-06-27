@@ -46,12 +46,20 @@ class BookProcessor:
                     'id': existing.id,
                     'title': existing.title,
                     'file_path': existing.file_path
-                }
+                            }
             
             # Create new book
             book = Book(book_hash=book_hash, file_path=self.filepath, title=title)
             session.add(book)
-            session.refresh(book)
+            session.flush()  # Flush to get the auto-generated ID
+            
+            print("Book Created:")
+            print({
+                'id': book.id,
+                'title': book.title,
+                'file_path': book.file_path
+            })
+
             return {
                 'id': book.id,
                 'title': book.title,
