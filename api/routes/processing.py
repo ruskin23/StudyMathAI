@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
 from studymathai.processor import PageTextExtractor, BookContentExtractor, BookProcessor
-from studymathai.generator import SlideGenerator
+
 from studymathai.db import DatabaseConnection
 from studymathai.models import Book, BookContent, ChapterContent
 from studymathai.utils import TextCleaner
@@ -29,8 +29,7 @@ class ContentExtractionResponse(ProcessingResponse):
 class SegmentationResponse(ProcessingResponse):
     segments_created: int
 
-class SlideGenerationResponse(ProcessingResponse):
-    slides_generated: int
+
 
 # ──────────────── Processing Endpoints ────────────────
 
@@ -124,50 +123,22 @@ def segment_chapters(book_id: int):
         raise HTTPException(status_code=500, detail=f"Chapter segmentation failed: {str(e)}")
 
 
-@router.post("/generate-slides/{book_id}", response_model=SlideGenerationResponse)
-def generate_slides(book_id: int):
-    """Generate slides for all segments in a book."""
-    try:
-        with db.get_session() as session:
-            book = session.query(Book).filter_by(id=book_id).first()
-            if not book:
-                raise HTTPException(status_code=404, detail="Book not found")
-            
-            segments = session.query(ChapterContent).filter_by(book_id=book_id).all()
-            if not segments:
-                raise HTTPException(status_code=400, detail="No segments found. Run chapter segmentation first.")
-
-        # Generate slides
-        slidegen = SlideGenerator(db)
-        slides_count = slidegen.process_book(book_id)
-
-        return SlideGenerationResponse(
-            message=f"Successfully generated slides for {slides_count} segments",
-            book_id=book_id,
-            success=True,
-            slides_generated=slides_count
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Slide generation failed: {str(e)}")
-
-
 @router.post("/process-complete/{book_id}", response_model=ProcessingResponse)
 def process_complete_pipeline(book_id: int):
-    """Run the complete processing pipeline for a book."""
+    """Run the complete PDF processing pipeline for a book (excludes AI slide generation)."""
     try:
         with db.get_session() as session:
             book = session.query(Book).filter_by(id=book_id).first()
             if not book:
                 raise HTTPException(status_code=404, detail="Book not found")
 
-        # Run all processing steps in sequence
+        # Run PDF processing steps in sequence (no AI slide generation)
         extract_pages(book_id)
         extract_content(book_id)
         segment_chapters(book_id)
-        generate_slides(book_id)
 
         return ProcessingResponse(
-            message="Complete processing pipeline executed successfully",
+            message="Complete PDF processing pipeline executed successfully",
             book_id=book_id,
             success=True
         )
