@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON, UniqueConstraint, Boolean
 from sqlalchemy.orm import declarative_base, relationship, backref
 from sqlalchemy.sql import func
 
@@ -17,6 +17,7 @@ class Book(Base):
     chapters = relationship("ChapterContent", back_populates="book", cascade="all, delete-orphan")
     toc_entries = relationship("TableOfContents", back_populates="book", cascade="all, delete-orphan")
     pages = relationship("PageText", back_populates="book", cascade="all, delete-orphan")
+    processing_status = relationship("ProcessingStatus", back_populates="book", uselist=False, cascade="all, delete-orphan")
 
 
 class BookContent(Base):
@@ -91,6 +92,25 @@ class GeneratedSlide(Base):
     model_info = Column(Text)
 
     content = relationship("ChapterContent", back_populates="slides")
+
+
+class ProcessingStatus(Base):
+    __tablename__ = 'processing_status'
+    __table_args__ = (
+        UniqueConstraint('book_id', name='uq_processing_status_book'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    book_id = Column(Integer, ForeignKey('books.id'), nullable=False)
+    content_extracted = Column(Boolean, default=False, nullable=False)
+    pages_extracted = Column(Boolean, default=False, nullable=False)
+    chapters_segmented = Column(Boolean, default=False, nullable=False)
+    slides_generated = Column(Boolean, default=False, nullable=False)
+    slides_indexed = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    book = relationship("Book", back_populates="processing_status")
 
 
 class PageText(Base):
