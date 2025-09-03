@@ -1,135 +1,86 @@
-# api/routes/books.py
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel
 import os
 import shutil
-from typing import List, Optional
-from studymathai.processor import BookProcessor
-from studymathai.db import DatabaseConnection
-from studymathai.models import Book
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from api.utils import get_db_session
+from studymathai.repositories.books import BooksRepository
 
 router = APIRouter()
-db = DatabaseConnection()
 
-data_dir = os.getenv("PDF_DIRECTORY", "./uploads")
-os.makedirs(data_dir, exist_ok=True)
-
-# ──────────────── Response Models ────────────────
 
 class UploadResponse(BaseModel):
     message: str
     book_id: int
     title: str
     file_path: str
+    created_at: datetime
+
 
 class BookMetadata(BaseModel):
     id: int
     title: str
     file_path: str
+    created_at: datetime
 
-class BookDetail(BookMetadata):
-    created_at: str
+    model_config = {"from_attributes": True}
 
-class BookUpdateRequest(BaseModel):
-    title: Optional[str] = None
-
-# ──────────────── Book Management Endpoints ────────────────
 
 @router.post("/upload", response_model=UploadResponse)
-def upload_book(file: UploadFile = File(...)):
-    """Upload and register a new book."""
+def upload_book(
+    file: UploadFile = File(...), session: Session = Depends(get_db_session)  # noqa: B008
+):
     try:
-        # Validate file type
-        if not file.filename.lower().endswith('.pdf'):
+        if not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="Only PDF files are supported")
-        
-        # Save uploaded file
+        data_dir = os.getenv("PDF_DIRECTORY", "./uploads")
+        os.makedirs(data_dir, exist_ok=True)
+
         filepath = os.path.join(data_dir, file.filename)
         with open(filepath, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        # Register book in database
-        processor = BookProcessor(filepath, db)
+        repo = BooksRepository(session)
+        book = repo.register_from_file(filepath)
+        book_obj = BookMetadata.model_validate(book)
 
         return UploadResponse(
             message="Book uploaded and registered successfully",
-            book_id=processor.book_data['id'],
-            title=processor.book_data['title'],
-            file_path=processor.book_data['file_path']
+            book_id=book_obj.id,
+            title=book_obj.title,
+            file_path=book_obj.file_path,
+            created_at=book_obj.created_at,
         )
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Upload Failed: {str(e)}") from e
 
-@router.get("/", response_model=List[BookMetadata])
-def list_books():
-    """Get all books."""
-    with db.get_session() as session:
-        books = session.query(Book).all()
-        return [
-            BookMetadata(id=b.id, title=b.title, file_path=b.file_path)
-            for b in books
-        ]
 
-@router.get("/{book_id}", response_model=BookDetail)
-def get_book(book_id: int):
-    """Get details of a specific book."""
-    with db.get_session() as session:
-        book = session.query(Book).filter_by(id=book_id).first()
-        if not book:
-            raise HTTPException(status_code=404, detail="Book not found")
-        return BookDetail(
-            id=book.id,
-            title=book.title,
-            file_path=book.file_path,
-            created_at=str(book.created_at)
-        )
+@router.get("/", response_model=list[BookMetadata])
+def list_books(session: Session = Depends(get_db_session)):  # noqa: B008
+    try:
+        books = BooksRepository(session).list()
+        return [BookMetadata.model_validate(book) for book in books]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e
+
+
+@router.get("/{book_id}", response_model=BookMetadata)
+def get_book(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+    try:
+        book = BooksRepository(session).get(book_id)
+        return BookMetadata.model_validate(book)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e
+
 
 @router.delete("/{book_id}")
-def delete_book(book_id: int):
-    """Delete a book and its associated data."""
-    print("Book ID: ", book_id)
+def delete_book(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
     try:
-        with db.get_session() as session:
-            book = session.query(Book).filter_by(id=book_id).first()
-            if not book:
-                raise HTTPException(status_code=404, detail="Book not found")
-            
-            # Store file path for deletion after database transaction
-            file_path = book.file_path
-            
-            print("Book: ", book)
-            # Delete from database (this should cascade to related tables)
-            session.delete(book)
-            session.flush()  # Flush to ensure database operations complete
-            print("Book deleted: ", book)
-            
-        # Delete the physical file after successful database deletion
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
-            
+        BooksRepository(session).delete(book_id)
         return {"message": f"Book {book_id} deleted successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
-
-@router.put("/{book_id}", response_model=BookDetail)
-def update_book(book_id: int, update_data: BookUpdateRequest):
-    """Update book metadata."""
-    try:
-        with db.get_session() as session:
-            book = session.query(Book).filter_by(id=book_id).first()
-            if not book:
-                raise HTTPException(status_code=404, detail="Book not found")
-            
-            if update_data.title:
-                book.title = update_data.title
-            
-            session.refresh(book)
-            
-            return BookDetail(
-                id=book.id,
-                title=book.title,
-                file_path=book.file_path,
-                created_at=str(book.created_at)
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e

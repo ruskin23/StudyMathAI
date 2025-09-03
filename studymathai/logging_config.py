@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 
+
 def get_logger(name: str = "studymathai") -> logging.Logger:
     logger = logging.getLogger(name)
 
@@ -12,8 +13,7 @@ def get_logger(name: str = "studymathai") -> logging.Logger:
     log_to_file = os.getenv("LOG_TO_FILE", "false").lower() == "true"
 
     formatter = logging.Formatter(
-        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
     if log_to_file:

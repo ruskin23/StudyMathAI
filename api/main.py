@@ -1,10 +1,10 @@
 # api/main.py
-import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import chat, books, processing, content
 
+from api.routes import books, content, extract
+from studymathai.database import DatabaseConnection
 
 app = FastAPI(title="StudyMathAI API")
 
@@ -15,13 +15,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
- 
+
+# Add DB connection
+app.state.db_connection = DatabaseConnection()
 
 # Register routes
-app.include_router(chat.router, prefix="/chat", tags=["Chat"])
 app.include_router(books.router, prefix="/books", tags=["Books"])
-app.include_router(processing.router, prefix="/processing", tags=["Processing"])
+app.include_router(extract.router, prefix="/extract", tags=["Extract"])
 app.include_router(content.router, prefix="/content", tags=["Content"])
+
 
 @app.get("/health")
 def health_check():

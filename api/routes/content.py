@@ -1,123 +1,156 @@
-# api/routes/content.py
-from fastapi import APIRouter, HTTPException
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-import json
-from typing import List
-from studymathai.db import DatabaseConnection
-from studymathai.models import Book, BookContent, ChapterContent, TableOfContents
+from sqlalchemy.orm import Session
+
+from api.utils import get_db_session
+from studymathai.repositories import (
+    BooksRepository,
+    ChaptersRepository,
+    PagesRepository,
+    ProcessingStatusRepository,
+    SegmentsRepository,
+    SlidesRepository,
+    TOCRepository,
+)
 
 router = APIRouter()
-db = DatabaseConnection()
 
-# ──────────────── Response Models ────────────────
 
-class TOCEntry(BaseModel):
+class TOCResponse(BaseModel):
     id: int
+    book_id: int
     level: int
     title: str
     page_number: int
-    chapter_id: int | None
 
-class ChapterInfo(BaseModel):
+    model_config = {"from_attributes": True}
+
+
+class ChapterResponse(BaseModel):
     id: int
-    title: str
+    book_id: int
+    chapter_title: str
     start_page: int
     end_page: int
+    created_at: datetime
 
-class SegmentInfo(BaseModel):
+    model_config = {"from_attributes": True}
+
+
+class PageResponse(BaseModel):
     id: int
+    book_id: int
+    chapter_id: int | None = None
+    page_number: int
+    page_text: str
+
+    model_config = {"from_attributes": True}
+
+
+class SegmentResponse(BaseModel):
+    id: int
+    book_id: int
     chapter_id: int
+    heading_level: int
+    heading_title: str
+    heading_text: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class SlideResponse(BaseModel):
+    id: int
+    book_id: int
+    segment_id: int
     title: str
-    level: int
-    content: str
+    bullets: list[str]
+
+    model_config = {"from_attributes": True}
 
 
+class ProcessingStatusResponse(BaseModel):
+    book_id: int
+    content_extracted: bool
+    pages_extracted: bool
+    chapters_segmented: bool
+    slides_generated: bool
+    slides_indexed: bool
+    created_at: datetime
+    updated_at: datetime
 
-# ──────────────── Content Retrieval Endpoints ────────────────
-
-@router.get("/{book_id}/toc", response_model=List[TOCEntry])
-def get_toc(book_id: int):
-    """Get table of contents for a book."""
-    with db.get_session() as session:
-        book = session.query(Book).filter_by(id=book_id).first()
-        if not book:
-            raise HTTPException(status_code=404, detail="Book not found")
-
-        entries = session.query(TableOfContents).filter_by(book_id=book.id).all()
-        
-    return [
-        TOCEntry(
-            id=e.id,
-            level=e.level,
-            title=e.title,
-            page_number=e.page_number,
-            chapter_id=e.chapter_id
-        ) for e in entries
-    ]
-
-@router.get("/{book_id}/chapters", response_model=List[ChapterInfo])
-def get_chapters(book_id: int):
-    """Get chapters for a book."""
-    with db.get_session() as session:
-        book = session.query(Book).filter_by(id=book_id).first()
-        if not book:
-            raise HTTPException(status_code=404, detail="Book not found")
-
-        chapters = session.query(BookContent).filter_by(book_id=book.id).all()
-        
-    return [
-        ChapterInfo(
-            id=c.id,
-            title=c.chapter_title,
-            start_page=c.start_page,
-            end_page=c.end_page
-        ) for c in chapters
-    ]
-
-@router.get("/{book_id}/segments", response_model=List[SegmentInfo])
-def get_segments(book_id: int):
-    """Get segments for a book."""
-    with db.get_session() as session:
-        book = session.query(Book).filter_by(id=book_id).first()
-        if not book:
-            raise HTTPException(status_code=404, detail="Book not found")
-
-        segments = session.query(ChapterContent).filter_by(book_id=book.id).all()
-        
-    return [
-        SegmentInfo(
-            id=s.id,
-            chapter_id=s.chapter_id,
-            title=s.heading_title,
-            level=s.heading_level,
-            content=s.content_text
-        ) for s in segments
-    ]
+    model_config = {"from_attributes": True}
 
 
+@router.get("/metadata/toc/{book_id}", response_model=list[TOCResponse])
+def get_toc_metadata(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+    try:
+        # Ensure book exists and list TOC via repository
+        BooksRepository(session).get(book_id)
+        tocs = TOCRepository(session).list_for_book(book_id)
+        return [TOCResponse.model_validate(toc) for toc in tocs]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e
 
-@router.get("/{book_id}/segments/{segment_id}", response_model=SegmentInfo)
-def get_segment_detail(book_id: int, segment_id: int):
-    """Get detailed information about a specific segment."""
-    with db.get_session() as session:
-        book = session.query(Book).filter_by(id=book_id).first()
-        if not book:
-            raise HTTPException(status_code=404, detail="Book not found")
-        
-        segment = session.query(ChapterContent).filter_by(
-            id=segment_id, 
-            book_id=book_id
-        ).first()
-        
-        if not segment:
-            raise HTTPException(status_code=404, detail="Segment not found")
-        
-    return SegmentInfo(
-        id=segment.id,
-        chapter_id=segment.chapter_id,
-        title=segment.heading_title,
-        level=segment.heading_level,
-        content=segment.content_text
-    )
 
- 
+@router.get("/metadata/chapters/{book_id}", response_model=list[ChapterResponse])
+def get_chapters_metadata(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+    try:
+        # Ensure book exists and list chapters via repository
+        BooksRepository(session).get(book_id)
+        chapters = ChaptersRepository(session).list_for_book(book_id)
+        return [ChapterResponse.model_validate(ch) for ch in chapters]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e
+
+
+@router.get("/pages/{book_id}", response_model=list[PageResponse])
+def list_pages(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+    try:
+        BooksRepository(session).get(book_id)
+        pages = PagesRepository(session).list_for_book(book_id)
+        return [PageResponse.model_validate(p) for p in pages]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e
+
+
+@router.get("/segments/{book_id}", response_model=list[SegmentResponse])
+def list_segments(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+    try:
+        BooksRepository(session).get(book_id)
+        segments = SegmentsRepository(session).list_for_book(book_id)
+        return [SegmentResponse.model_validate(s) for s in segments]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e
+
+
+@router.get("/slides/by-book/{book_id}", response_model=list[SlideResponse])
+def list_slides_by_book(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+    try:
+        BooksRepository(session).get(book_id)
+        slides = SlidesRepository(session).list_for_book(book_id)
+        return [SlideResponse.model_validate(s) for s in slides]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e
+
+
+@router.get("/slides/by-segment/{segment_id}", response_model=list[SlideResponse])
+def list_slides_by_segment(
+    segment_id: int, session: Session = Depends(get_db_session)
+):  # noqa: B008
+    try:
+        slides = SlidesRepository(session).list_for_segment_id(segment_id)
+        return [SlideResponse.model_validate(s) for s in slides]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e
+
+
+@router.get("/status/{book_id}", response_model=ProcessingStatusResponse)
+def get_processing_status(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+    try:
+        BooksRepository(session).get(book_id)
+        status = ProcessingStatusRepository(session).ensure_for_book(book_id)
+        return ProcessingStatusResponse.model_validate(status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed: {str(e)}") from e

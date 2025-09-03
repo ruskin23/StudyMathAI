@@ -1,10 +1,11 @@
-# retriever.py
-
 import chromadb
 from sentence_transformers import SentenceTransformer
-from studymathai.db import DatabaseConnection
-from studymathai.models import GeneratedSlide
-import json
+
+from studymathai.database import DatabaseConnection
+from studymathai.logging_config import get_logger
+from studymathai.repositories import SlidesRepository
+
+logger = get_logger(__name__)
 
 
 class SlideRetriever:
@@ -20,17 +21,17 @@ class SlideRetriever:
         results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k * 3,  # Fetch more to allow filtering by content_id
-            include=["metadatas", "distances"]
+            include=["metadatas", "distances"],
         )
 
         if not results["metadatas"]:
-            print("❌ No matches found.")
+            logger.info("No matches found in vector search")
             return []
 
         seen_content_ids = set()
         hits = []
 
-        for meta, dist in zip(results["metadatas"][0], results["distances"][0]):
+        for meta, dist in zip(results["metadatas"][0], results["distances"][0], strict=False):
             content_id = meta["content_id"]
             if content_id in seen_content_ids:
                 continue
@@ -38,11 +39,7 @@ class SlideRetriever:
 
             heading_title = meta.get("heading_title", "")
             score = 1 - dist
-            hits.append({
-                "content_id": content_id,
-                "heading_title": heading_title,
-                "score": score
-            })
+            hits.append({"content_id": content_id, "heading_title": heading_title, "score": score})
 
             if len(hits) >= top_k:
                 break
@@ -50,14 +47,18 @@ class SlideRetriever:
         return hits
 
     def get_slide_deck(self, content_id: int):
-        with self.db.get_session() as session:
-            deck = session.query(GeneratedSlide).filter_by(content_id=content_id).first()
-            
-        if not deck:
-            return None
+        """Return a slide deck for a segment (content_id == segment_id).
 
-        try:
-            return json.loads(deck.slides_json)
-        except Exception as e:
-            print(f"❌ Failed to parse slides for content_id {content_id}: {e}")
-            return None
+        Format: {"heading": str, "slides": [{"title": str, "bullets": list[str]}]}
+        """
+        with self.db.get_session() as session:
+            # Fetch slides and segment header
+            repo_slides = SlidesRepository(session)
+            slides = repo_slides.list_for_segment_id(content_id)
+            # Build deck JSON-like structure
+            heading_title = slides[0].segment.heading_title if slides else ""
+            deck = {
+                "heading": heading_title,
+                "slides": [{"title": s.title, "bullets": s.bullets} for s in slides],
+            }
+            return deck

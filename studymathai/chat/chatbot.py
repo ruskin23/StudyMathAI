@@ -1,11 +1,13 @@
-import os
 import json
+import os
+
 from openai import OpenAI
-from typing import Optional, List, Dict
-from studymathai.retriever import SlideRetriever
+
+from studymathai.chat.retriever import SlideRetriever
 from studymathai.logging_config import get_logger
 
 logger = get_logger(__name__)
+
 
 class ChatContextManager:
     def __init__(self, history_file="chat_history.json"):
@@ -19,7 +21,7 @@ class ChatContextManager:
     def load(self):
         if os.path.exists(self.history_file):
             try:
-                with open(self.history_file, "r", encoding="utf-8") as f:
+                with open(self.history_file, encoding="utf-8") as f:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"Failed to load chat history: {e}")
@@ -35,11 +37,14 @@ class ChatContextManager:
         except Exception as e:
             logger.error(f"Failed to save chat history: {e}")
 
+
 class ContextAwareChatBot:
-    def __init__(self, 
-                 retriever: SlideRetriever,
-                 context_manager: ChatContextManager,
-                 tools: Optional[List[Dict]] = None):
+    def __init__(
+        self,
+        retriever: SlideRetriever,
+        context_manager: ChatContextManager,
+        tools: list[dict] | None = None,
+    ):
         self.model = os.getenv("MODEL_NAME")
         self.client = OpenAI(api_key=os.getenv("OPEN_API_KEY"))
         self.retriever = retriever
@@ -61,11 +66,11 @@ class ContextAwareChatBot:
                     "properties": {
                         "query": {"type": "string"},
                         "keywords": {"type": "array", "items": {"type": "string"}},
-                        "top_k": {"type": "integer", "default": 3}
+                        "top_k": {"type": "integer", "default": 3},
                     },
                     "required": ["query", "keywords", "top_k"],
-                    "additionalProperties": False
-                }
+                    "additionalProperties": False,
+                },
             }
         ]
 
@@ -77,14 +82,17 @@ class ContextAwareChatBot:
             model=self.model,
             input=self.history,
             tools=self.tools,
-            instructions="You are a helpful math tutor with access to a knowledge base of textbook slides.",
+            instructions=(
+                "You are a helpful math tutor with access to a knowledge base "
+                "of textbook slides."
+            ),
         )
 
         if response.output and response.output[0].type == "function_call":
             tool_call = response.output[0]
             print(f"🔧 [TOOL CALL] Model requested tool: {tool_call.name}")
             print(f"📦 Arguments: {tool_call.arguments}")
-            
+
             self.context_manager.append(tool_call.model_dump())
 
             args = json.loads(tool_call.arguments)
@@ -94,29 +102,41 @@ class ContextAwareChatBot:
             for context in contexts:
                 deck = self.retriever.get_slide_deck(context["content_id"])
                 if deck:
-                    decks_list.append({
-                        "segment_id": context["content_id"],
-                        "heading": deck['heading'],
-                        "slides": deck["slides"]
-                    })
+                    decks_list.append(
+                        {
+                            "segment_id": context["content_id"],
+                            "heading": deck["heading"],
+                            "slides": deck["slides"],
+                        }
+                    )
 
-            self.context_manager.append({
-                "type": "function_call_output",
-                "call_id": tool_call.call_id,
-                "output": str(decks_list)
-            })
+            self.context_manager.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    "output": str(decks_list),
+                }
+            )
 
-            print("📤 [INFO] Tool executed and output added to history. Requesting final answer...\n")
+            print(
+                "📤 [INFO] Tool executed and output added to history. Requesting final answer...\n"
+            )
 
             final_response = self.client.responses.create(
                 model=self.model,
                 input=self.history,
-                tools=self.tools
+                tools=self.tools,
             )
-            
-            self.context_manager.append({"role": "assistant", "content": final_response.output_text})
+
+            self.context_manager.append(
+                {"role": "assistant", "content": final_response.output_text}
+            )
             self.context_manager.save()
-            return (final_response.output_text, decks_list) if return_context else final_response.output_text
+            return (
+                (final_response.output_text, decks_list)
+                if return_context
+                else final_response.output_text
+            )
 
         else:
             print("💬 [INFO] Model responded directly without using a tool.")

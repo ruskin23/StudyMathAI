@@ -4,41 +4,35 @@
   <img src="StudyMath.ai.png" alt="StudyMathAI Logo">
 </div>
 
-Transform PDF textbooks into structured, searchable content with AI-powered slides and interactive chat capabilities.
+Transform PDF textbooks into structured, searchable content with a clean REST API.
 
 ## Overview
 
 StudyMathAI processes PDF textbooks by:
-1. **PDF Processing**: Extracting text, structure, and creating heading-text segments
-2. **AI Enhancement**: Generating study slides and embeddings (optional)
-3. **Interactive Features**: Chat interface with context-aware responses
-4. **REST API**: Complete API for content management and retrieval
+1. **PDF Processing**: Extract text, TOC/chapters, and heading-based segments
+2. **REST API**: Manage uploads and retrieve content (books/TOC/chapters/pages/segments/slides)
 
-**Key Architecture**: PDF processing is completely independent from AI functionality, allowing you to process books without AI dependencies.
+**Key Architecture**: The PDF processing pipeline is independent and runs on PDF + NLP tooling. No auth by default. CORS enabled for development.
 
 ## Quick Start
 
 ### Prerequisites
 - Python 3.12+
-- OpenAI API key (only needed for AI features)
 
 ### Installation
 
 ```bash
 git clone https://github.com/yourusername/studymathai.git
 cd studymathai
+python -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
 ### Environment Setup
 
-Create a `.env` file:
+Create a `.env` file (optional):
 ```env
-OPEN_API_KEY=your_openai_api_key_here
-MODEL_NAME=gpt-4o-mini
 SQLITE_DB_NAME=studymathai.db
-CHROMA_DIRECTORY=./chroma_index
-EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
 PDF_DIRECTORY=./uploads
 ```
 
@@ -52,86 +46,46 @@ API documentation: `http://localhost:8000/docs`
 
 ## API Endpoints
 
-### 📚 Book Management
+### 📚 Books (`/books`)
+- POST `/books/upload` — Upload and register a PDF (multipart field `file`)
+- GET `/books/` — List all books
+- GET `/books/{book_id}` — Get book details
+- DELETE `/books/{book_id}` — Delete a book and associated data
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/books/upload` | Upload a PDF book |
-| GET | `/books/` | List all books |
-| GET | `/books/{book_id}` | Get book details |
-| PUT | `/books/{book_id}` | Update book metadata |
-| DELETE | `/books/{book_id}` | Delete book and data |
+### 🔄 Extract (`/extract`)
+- POST `/extract/metadata/{book_id}` — Extract TOC and chapters
+- POST `/extract/pages/{book_id}` — Extract page text
+- POST `/extract/segments/{book_id}` — Segment into heading-text sections
 
-### 🔄 PDF Processing (No AI Required)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/processing/extract-pages/{book_id}` | Extract page-level text |
-| POST | `/processing/extract-content/{book_id}` | Extract chapters and TOC |
-| POST | `/processing/segment-chapters/{book_id}` | Create heading-text segments |
-| POST | `/processing/process-complete/{book_id}` | Run complete PDF pipeline |
-
-### 📖 Content Retrieval
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/content/{book_id}/toc` | Get table of contents |
-| GET | `/content/{book_id}/chapters` | Get all chapters |
-| GET | `/content/{book_id}/segments` | Get heading-text segments |
-| GET | `/content/{book_id}/segments/{segment_id}` | Get specific segment |
-
-### 🤖 AI Slide Generation (Requires OpenAI API)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/slides/generate/{book_id}` | Generate AI slides for book |
-| GET | `/slides/{book_id}/all` | Get all generated slides |
-| GET | `/slides/{book_id}/segment/{segment_id}` | Get slides for specific segment |
-
-### 💬 Chat Interface
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/chat/query` | Send a chat message |
-| GET | `/chat/history/{session_id}` | Get chat history |
+### 📖 Content (`/content`)
+- GET `/content/metadata/toc/{book_id}` — Table of contents
+- GET `/content/metadata/chapters/{book_id}` — Chapters
+- GET `/content/pages/{book_id}` — Page text
+- GET `/content/segments/{book_id}` — Segments
+- GET `/content/slides/by-book/{book_id}` — Slides for the book
+- GET `/content/slides/by-segment/{segment_id}` — Slides for a segment
+- GET `/content/status/{book_id}` — Processing status flags
 
 ## Usage Examples
 
-### Basic PDF Processing (No AI)
+### Basic PDF Processing
 
 ```bash
 # 1. Upload PDF
 curl -X POST "http://localhost:8000/books/upload" \
      -F "file=@textbook.pdf"
 
-# 2. Process PDF (extract text, chapters, segments)
-curl -X POST "http://localhost:8000/processing/process-complete/1"
+# 2. Extract metadata (TOC + chapters)
+curl -X POST "http://localhost:8000/extract/metadata/1"
 
-# 3. Get heading-text segments
-curl -X GET "http://localhost:8000/content/1/segments"
-```
+# 3. Extract pages (plain text per page)
+curl -X POST "http://localhost:8000/extract/pages/1"
 
-### Full Pipeline with AI Features
+# 4. Segment content (heading → text)
+curl -X POST "http://localhost:8000/extract/segments/1"
 
-```bash
-# 1-3. Same as above...
-
-# 4. Generate AI slides
-curl -X POST "http://localhost:8000/slides/generate/1"
-
-# 5. Get generated slides
-curl -X GET "http://localhost:8000/slides/1/all"
-```
-
-### Chat with Content
-
-```bash
-curl -X POST "http://localhost:8000/chat/query" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "session_id": "user123",
-       "query": "What are vector spaces?"
-     }'
+# 5. Get segments
+curl -X GET "http://localhost:8000/content/segments/1"
 ```
 
 ### Python Integration
@@ -147,77 +101,69 @@ with open("textbook.pdf", "rb") as f:
     )
     book_id = response.json()["book_id"]
 
-# Process PDF content
-requests.post(f"http://localhost:8000/processing/process-complete/{book_id}")
+# Extract content
+requests.post(f"http://localhost:8000/extract/metadata/{book_id}")
+requests.post(f"http://localhost:8000/extract/pages/{book_id}")
+requests.post(f"http://localhost:8000/extract/segments/{book_id}")
 
 # Get heading-text segments
-segments = requests.get(f"http://localhost:8000/content/{book_id}/segments")
+segments = requests.get(f"http://localhost:8000/content/segments/{book_id}")
 print(f"Found {len(segments.json())} segments")
-
-# Optional: Generate AI slides
-requests.post(f"http://localhost:8000/slides/generate/{book_id}")
-slides = requests.get(f"http://localhost:8000/slides/{book_id}/all")
-
-# Chat with content
-chat_response = requests.post(
-    "http://localhost:8000/chat/query",
-    json={
-        "session_id": "my_session",
-        "query": "Explain linear independence"
-    }
-)
-print(chat_response.json()["response"])
 ```
 
 ## Project Structure
 
 ```
+api/
+├── main.py                  # FastAPI app (CORS + routers)
+├── utils.py                 # DB session dependency
+└── routes/
+    ├── books.py            # Upload/list/get/delete books
+    ├── extract.py          # Extract metadata/pages/segments
+    └── content.py          # TOC/chapters/pages/segments/slides/status
+
 studymathai/
-├── api/                   # REST API
-│   ├── main.py           # FastAPI app
-│   └── routes/           # API endpoints
-│       ├── books.py      # Book management
-│       ├── content.py    # Content retrieval
-│       ├── processing.py # PDF processing pipeline
-│       ├── slides.py     # AI slide generation
-│       └── chat.py       # Chat interface
-├── studymathai/          # Core library
-│   ├── chatbot.py        # AI chatbot
-│   ├── db.py             # Database operations
-│   ├── generator.py      # Slide generation
-│   ├── indexer.py        # Vector indexing
-│   ├── models.py         # Database models
-│   ├── processor.py      # PDF processing
-│   └── retriever.py      # Search functionality
+├── database/
+│   ├── core.py             # DB engine/session factory
+│   └── models.py           # SQLAlchemy models
+├── repositories/           # CRUD/data access
+│   ├── books.py, pages.py, chapters.py, toc.py,
+│   ├── segments.py, slides.py, status.py
+├── services/extraction.py  # Orchestration for pipeline steps
+├── processing/             # PDF/segmentation logic (fitz + sbert)
+│   ├── extraction.py       # TOC/pages parsing
+│   └── segmentation.py     # Heading-based segmentation
+├── data_models.py          # Pydantic models for processing
+└── logging_config.py       # Logger helper
 ```
 
 ## Processing Workflow
 
-### PDF-Only Workflow (No AI dependencies)
+### PDF Processing Workflow
 ```
-Upload PDF → Extract Pages → Extract Content → Segment Chapters → Retrieve Segments
-```
-
-### Full AI-Enhanced Workflow
-```
-PDF Processing → Generate Slides → Chat Interface
+Upload PDF → Extract Metadata → Extract Pages → Segment → Retrieve Content
 ```
 
 ## Database Schema
 
 - **Book**: PDF metadata and file information
 - **PageText**: Raw text content per page
-- **BookContent**: Chapter-level content
-- **ChapterContent**: Section segments with heading-text pairs
+- **BookChapter**: Chapter-level content
+- **ChapterSegment**: Section segments with heading-text pairs
 - **TableOfContents**: Document structure
-- **GeneratedSlide**: AI-generated slides (optional)
+- **SegmentSlide**: AI-generated slides (optional)
 
 ## Configuration
 
-| Variable | Description | Default | Required For |
-|----------|-------------|---------|--------------|
-| `OPEN_API_KEY` | OpenAI API key | - | AI features only |
-| `MODEL_NAME` | OpenAI model | `gpt-4o-mini` | AI features only |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SQLITE_DB_NAME` | SQLite database filename | `studymathai.db` |
+| `PDF_DIRECTORY` | Directory for uploaded PDFs | `./uploads` |
+
+Notes
+
+- The segmentation step loads a sentence-transformers model (`all-MiniLM-L6-v2`) on first run, which may download weights if not cached.
+- Endpoints return structured JSON with `{ "detail": "..." }` on errors.
 | `SQLITE_DB_NAME` | Database file | `studymathai.db` | All features |
 | `CHROMA_DIRECTORY` | Vector storage | `./chroma_index` | Chat/search |
 | `EMBEDDING_MODEL_NAME` | Embedding model | `all-MiniLM-L6-v2` | Chat/search |

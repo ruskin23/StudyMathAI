@@ -1,22 +1,28 @@
 import os
+from contextlib import contextmanager
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import IntegrityError
-from studymathai.models import Base, Book, BookContent, ChapterContent, GeneratedSlide, TableOfContents, PageText, ProcessingStatus
-import json
-from typing import List, Optional
-from contextlib import contextmanager
+from sqlalchemy.pool import StaticPool
+
+from studymathai.database.models import Base
+
 
 class DatabaseConnection:
     def __init__(self, db_name: str = None):
         self.db_name = db_name or os.getenv("SQLITE_DB_NAME", "studymathai.db")
-        self.engine = create_engine(
-            f"sqlite:///{self.db_name}",
-            connect_args={"check_same_thread": False},
-            pool_size=10,
-            max_overflow=20,
-            pool_timeout=30
-        )
+
+        if self.db_name == ":memory:":
+            self.engine = create_engine(
+                "sqlite:///:memory:",
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+        else:
+            self.engine = create_engine(
+                f"sqlite:///{self.db_name}", connect_args={"check_same_thread": False}
+            )
+
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
 
