@@ -3,7 +3,7 @@ import os
 
 from openai import OpenAI
 
-from studymathai.assistant.retriever import SlideRetriever
+from studymathai.services.kb import SlideRetriever
 from studymathai.logging_config import get_logger
 
 logger = get_logger(__name__)

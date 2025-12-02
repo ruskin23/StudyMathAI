@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from api.utils import get_db_session
 from studymathai.repositories import BooksRepository
-from studymathai.services.pdf_processing import (
+from studymathai.services.pdf import (
     extract_and_save_metadata,
     extract_and_save_pages,
     segment_and_save,

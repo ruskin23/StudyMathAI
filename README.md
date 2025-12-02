@@ -127,15 +127,17 @@ studymathai/
 │   ├── extraction.py       # TOC/pages parsing (PyMuPDF)
 │   ├── segmentation.py     # Heading-based segmentation (NLP)
 │   └── generation.py       # AI slide generation (OpenAI)
-├── assistant/              # AI learning features
-│   ├── chatbot.py          # Q&A chatbot
-│   ├── indexer.py          # Vector indexing
-│   └── retriever.py        # Semantic search
+├── agent/                  # AI learning agent
+│   └── chatbot.py          # Q&A chatbot with context management
+├── services/               # Service layer
+│   ├── pdf/                # PDF processing service
+│   │   └── pdf_processing.py
+│   └── kb/                 # Knowledge base service
+│       ├── indexer.py      # Vector indexing
+│       └── retriever.py    # Semantic search
 ├── repositories/           # CRUD/data access
 │   ├── books.py, pages.py, chapters.py, toc.py
 │   ├── segments.py, slides.py, status.py
-├── services/
-│   └── pdf_processing.py   # Pipeline orchestration
 ├── database/
 │   ├── core.py             # DB engine/session factory
 │   └── models.py           # SQLAlchemy models
