@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from api.utils import get_db_session
 from studymathai.repositories import BooksRepository
-from studymathai.services.extraction import (
+from studymathai.services.pdf_processing import (
     extract_and_save_metadata,
     extract_and_save_pages,
     segment_and_save,
@@ -25,10 +25,10 @@ class PageTextResponse(BaseModel):
 
 
 @router.post("/metadata/{book_id}", response_model=MetadataResponse)
-def extract_metadata(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+def extract_metadata(book_id: int, session: Session = Depends(get_db_session)):
     try:
         book = BooksRepository(session).get(book_id)
-        ch_created, toc_created = extract_and_save_metadata(session, book.id)
+        _, _ = extract_and_save_metadata(session, book.id)
 
         return MetadataResponse(id=book.id, message="Successfully extracted metadata")
     except Exception as e:
@@ -39,7 +39,7 @@ def extract_metadata(book_id: int, session: Session = Depends(get_db_session)): 
 
 
 @router.post("/pages/{book_id}", response_model=PageTextResponse)
-def extract_page_text(book_id: int, session: Session = Depends(get_db_session)):  # noqa: B008
+def extract_page_text(book_id: int, session: Session = Depends(get_db_session)):
     try:
         book = BooksRepository(session).get(book_id)
         pages_created = extract_and_save_pages(session, book.id)
@@ -55,9 +55,7 @@ def extract_page_text(book_id: int, session: Session = Depends(get_db_session)):
 
 
 @router.post("/segments/{book_id}", response_model=PageTextResponse)
-def extract_chapter_segments(
-    book_id: int, session: Session = Depends(get_db_session)
-):  # noqa: B008
+def extract_chapter_segments(book_id: int, session: Session = Depends(get_db_session)):
     try:
         book = BooksRepository(session).get(book_id)
         created_total = segment_and_save(session, book.id)

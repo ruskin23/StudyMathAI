@@ -9,11 +9,6 @@ from .models import (
     SegmentSlides,
     TableOfContents,
 )
-from .transform import (
-    convert_chapter_entry,
-    convert_text,
-    convert_toc_entry,
-)
 
 __all__ = [
     "DatabaseConnection",
@@ -25,8 +20,4 @@ __all__ = [
     "TableOfContents",
     "PageText",
     "ProcessingStatus",
-    # Transform helpers
-    "convert_text",
-    "convert_chapter_entry",
-    "convert_toc_entry",
 ]

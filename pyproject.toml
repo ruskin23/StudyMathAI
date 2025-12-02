@@ -22,21 +22,19 @@ dependencies = [
     "python-multipart (>=0.0.20,<0.0.21)"
 ]
 
-[tool.poetry]
-packages = [{include = "studymathai", from = "src"}]
-
-
-[tool.poetry.group.dev.dependencies]
-jupyter = "^1.1.1"
-ipykernel = "^6.29.5"
-pypdf2 = "^3.0.1"
-pytest = "^8.4.1"
-ruff = "^0.6.9"
-black = "^24.8.0"
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+    "ipykernel>=6.29.5",
+    "pypdf2>=3.0.1",
+    "pytest>=8.4.1",
+    "ruff>=0.6.9",
+    "black>=24.8.0",
+]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 
 [tool.ruff]
@@ -56,10 +54,11 @@ exclude = [
 select = [
   "E",  # pycodestyle errors
   "F",  # pyflakes
-  "W",  # pycodestyle warnings
-  "I",  # isort (import sorting)
-  "B",  # flake8-bugbear
-  "UP", # pyupgrade
+  # Disabled to show only errors, not warnings:
+  # "W",  # pycodestyle warnings
+  # "I",  # isort (import sorting)
+  # "B",  # flake8-bugbear
+  # "UP", # pyupgrade
 ]
 ignore = [
 ]

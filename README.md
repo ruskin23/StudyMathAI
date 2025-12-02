@@ -123,17 +123,23 @@ api/
     └── content.py          # TOC/chapters/pages/segments/slides/status
 
 studymathai/
+├── processing/             # Content transformation pipeline
+│   ├── extraction.py       # TOC/pages parsing (PyMuPDF)
+│   ├── segmentation.py     # Heading-based segmentation (NLP)
+│   └── generation.py       # AI slide generation (OpenAI)
+├── assistant/              # AI learning features
+│   ├── chatbot.py          # Q&A chatbot
+│   ├── indexer.py          # Vector indexing
+│   └── retriever.py        # Semantic search
+├── repositories/           # CRUD/data access
+│   ├── books.py, pages.py, chapters.py, toc.py
+│   ├── segments.py, slides.py, status.py
+├── services/
+│   └── pdf_processing.py   # Pipeline orchestration
 ├── database/
 │   ├── core.py             # DB engine/session factory
 │   └── models.py           # SQLAlchemy models
-├── repositories/           # CRUD/data access
-│   ├── books.py, pages.py, chapters.py, toc.py,
-│   ├── segments.py, slides.py, status.py
-├── services/extraction.py  # Orchestration for pipeline steps
-├── processing/             # PDF/segmentation logic (fitz + sbert)
-│   ├── extraction.py       # TOC/pages parsing
-│   └── segmentation.py     # Heading-based segmentation
-├── data_models.py          # Pydantic models for processing
+├── data_models.py          # Pydantic models
 └── logging_config.py       # Logger helper
 ```
 
@@ -176,9 +182,9 @@ Notes
 - **PyMuPDF**: PDF processing
 - **SQLAlchemy**: Database ORM
 
-**AI Dependencies (Optional):**
-- **OpenAI**: AI slide generation
-- **ChromaDB**: Vector database
+**AI Dependencies:**
+- **OpenAI**: AI slide generation and chatbot
+- **ChromaDB**: Vector database for semantic search
 - **sentence-transformers**: Text embeddings
 
 ## Command Line Usage
